@@ -195,7 +195,7 @@ export default function App() {
   return (
     <SettingsProvider>
       <AuthContext.Provider value={{ user, profile, loading }}>
-        <Router>
+        <Router basename={import.meta.env.BASE_URL}>
           <Routes>
             <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
             <Route element={user ? <Layout /> : <Navigate to="/login" />}>
