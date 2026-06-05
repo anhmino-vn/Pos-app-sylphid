@@ -1,0 +1,217 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Master Deny-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function getRawUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'anhmino.it@gmail.com' ||
+        request.auth.token.email == 'ngocanhvux4@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getRawUserData().role == 'admin')
+      );
+    }
+
+    function isStaff() {
+      return isSignedIn() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getRawUserData().role == 'staff')
+      );
+    }
+
+    function getRolePermissions(roleId) {
+      return exists(/databases/$(database)/documents/roles/$(roleId)) 
+        ? get(/databases/$(database)/documents/roles/$(roleId)).data.permissions 
+        : null;
+    }
+
+    function hasPermission(module, action) {
+      let userData = getRawUserData();
+      let perms = userData.permissions != null ? userData.permissions : getRolePermissions(userData.roleId);
+      return isAdmin() || (perms != null && perms[module] != null && perms[module][action] == true);
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidProduct(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200
+          && data.sku is string && data.sku.size() > 0 && data.sku.size() <= 50
+          && data.salePrice is number && data.salePrice >= 0
+          && data.stock is number && data.stock >= 0
+          && (data.category == null || data.category is string)
+          && (data.status in ['active', 'out_of_stock', 'discontinued'])
+          && (data.importPrice == null || data.importPrice is number)
+          && (data.description == null || data.description is string)
+          && (data.images == null || data.images is list);
+    }
+
+    function isValidOrder(data) {
+      return data.totalAmount is number && data.totalAmount >= 0
+          && data.items is list && data.items.size() > 0
+          && data.status in ['pending', 'shipping', 'completed', 'cancelled', 'paid', 'unpaid'];
+    }
+
+    function isValidCustomer(data) {
+      return data.name is string && data.name.size() > 0
+          && (data.phone == null || data.phone == "" || (data.phone is string && data.phone.size() >= 8));
+    }
+
+    function isValidCategory(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+          && (data.description == null || (data.description is string && data.description.size() <= 500));
+    }
+
+    function isValidInventoryLog(data) {
+      return data.productId is string && data.productName is string
+          && data.type in ['in', 'out', 'adjustment']
+          && data.quantity is number
+          && data.createdBy is string && data.createdBy.size() <= 200
+          && (data.reason == null || (data.reason is string && data.reason.size() <= 500));
+    }
+
+    function isValidService(data) {
+      return data.name is string && data.name.size() > 0
+          && data.code is string && data.code.size() > 0
+          && data.price is number && data.price >= 0
+          && (data.status in ['active', 'hidden', 'inactive']);
+    }
+
+    function isValidBooking(data) {
+      return data.customerName is string && data.customerPhone is string
+          && data.serviceId is string && data.bookingDate is string
+          && data.bookingTime is string && data.status in ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'];
+    }
+
+    function isValidStaff(data) {
+      return data.name is string && data.name.size() > 0
+          && (data.status in ['active', 'inactive']);
+    }
+
+    function isValidGuide(data) {
+      return data.title is string && data.title.size() > 0
+          && (data.status in ['active', 'hidden']);
+    }
+
+    // --- Match Blocks ---
+
+    match /system_configs/{configId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /stockImports/{importId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /stockExports/{exportId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /customer_transactions/{txId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /departments/{departmentId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /roles/{roleId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /activity_logs/{logId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    match /orders/{orderId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /customers/{customerId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /categories/{categoryId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /serviceCategories/{categoryId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /inventoryLogs/{logId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /services/{serviceId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /bookings/{bookingId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /staff/{staffId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /guides/{guideId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /guideCategories/{catId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // Allow testing connection if needed (optional)
+    match /test/connection {
+      allow read: if isSignedIn();
+    }
+  }
+}

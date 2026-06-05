@@ -1,0 +1,6 @@
+{
+  "name": "POS SYLPHID",
+  "description": "A modern, minimalist sales and inventory management platform for high-end retail and wellness businesses.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

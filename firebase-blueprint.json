@@ -1,0 +1,194 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Store items with pricing and inventory details.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "importPrice": { "type": "number" },
+        "salePrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "description": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "out_of_stock", "discontinued"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "sku", "salePrice", "stock"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Sales transactions records.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "items": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string", "enum": ["product", "service"] },
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" }
+            }
+          }
+        },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "shipping", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["items", "totalAmount", "status"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer profiles and contact info.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Store admin and staff accounts.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "shopName": { "type": "string" },
+        "permissions": { "type": "object" }
+      }
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product categories.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Offerings like spa, massage, etc.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "price": { "type": "number" },
+        "promoPrice": { "type": "number" },
+        "duration": { "type": "number" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "hidden"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "code", "price"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Service appointments.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "bookingDate": { "type": "string", "format": "date" },
+        "bookingTime": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "in_progress", "completed", "cancelled"] },
+        "totalAmount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerName", "customerPhone", "serviceId", "bookingDate", "bookingTime", "status"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Service personnel.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] }
+      },
+      "required": ["name"]
+    },
+    "InventoryLog": {
+      "title": "InventoryLog",
+      "description": "History of stock changes.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "type": { "type": "string", "enum": ["in", "out", "adjustment"] },
+        "quantity": { "type": "number" },
+        "reason": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "productName", "type", "quantity", "createdBy"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Product catalog."
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Sales orders."
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer directory."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles for auth."
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Product categories."
+    },
+    "/inventoryLogs/{logId}": {
+      "schema": "InventoryLog",
+      "description": "Stock movement logs."
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Services catalog."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Appointments."
+    },
+    "/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "System staff."
+    }
+  }
+}
