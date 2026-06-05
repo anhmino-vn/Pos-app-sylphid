@@ -17,6 +17,12 @@ export interface DashboardData {
   allOrders: Order[];
   todayBookings: Booking[];
   todayOrdersCount: number;
+  todayRevenue: number;
+  todayProfit: number;
+  todayNewCustomers: number;
+  todayReferrals: number;
+  totalUnpaidDebt: number;
+  unpaidCustomersCount: number;
 }
 
 export function useDashboardData(dateRange: DateRange): DashboardData {
@@ -32,7 +38,13 @@ export function useDashboardData(dateRange: DateRange): DashboardData {
     topCustomers: [],
     allOrders: [],
     todayBookings: [],
-    todayOrdersCount: 0
+    todayOrdersCount: 0,
+    todayRevenue: 0,
+    todayProfit: 0,
+    todayNewCustomers: 0,
+    todayReferrals: 0,
+    totalUnpaidDebt: 0,
+    unpaidCustomersCount: 0
   });
 
   useEffect(() => {
@@ -45,12 +57,14 @@ export function useDashboardData(dateRange: DateRange): DashboardData {
     let currentProducts: Product[] = [];
     let currentBookings: Booking[] = [];
     let currentOrders: Order[] = [];
+    let currentCustomers: any[] = [];
     let isProductsLoaded = false;
     let isBookingsLoaded = false;
     let isOrdersLoaded = false;
+    let isCustomersLoaded = false;
 
     const computeStats = () => {
-       if (!isProductsLoaded || !isBookingsLoaded || !isOrdersLoaded) return;
+       if (!isProductsLoaded || !isBookingsLoaded || !isOrdersLoaded || !isCustomersLoaded) return;
 
        // 1. Inventory stats (ignores date filter as requested)
        const inventoryTotal = currentProducts.reduce((acc, p) => acc + (p.stock || 0), 0);
@@ -89,7 +103,7 @@ export function useDashboardData(dateRange: DateRange): DashboardData {
          .filter(o => o.status === 'paid')
          .reduce((acc, o) => acc + (o.totalAmount || 0), 0);
 
-       const todayOrdersCount = activeOrders.filter(o => {
+       const todayOrdersCountRaw = activeOrders.filter(o => {
          const orderDate = o.createdAt?.toDate();
          return orderDate && orderDate >= today && orderDate < tomorrow;
        }).length;
@@ -149,6 +163,27 @@ export function useDashboardData(dateRange: DateRange): DashboardData {
          .sort((a: any, b: any) => b.spend - a.spend)
          .slice(0, 5);
 
+       // Advanced Dashboard Stats
+       const todayOrders = activeOrders.filter(o => {
+         const orderDate = o.createdAt?.toDate();
+         return orderDate && orderDate >= today && orderDate < tomorrow;
+       });
+       const todayOrdersCount = todayOrders.length;
+       const todayRevenue = todayOrders.filter(o => o.status === 'paid').reduce((acc, o) => acc + (o.totalAmount || 0), 0);
+       const todayProfit = todayRevenue * 0.6; // Tạm tính 60% doanh thu là lợi nhuận
+       
+       const unpaidOrders = activeOrders.filter(o => o.status === 'unpaid');
+       const totalUnpaidDebt = unpaidOrders.reduce((acc, o) => acc + (o.totalAmount || 0) - ((o as any).amountPaid || 0), 0);
+       const unpaidCustomersSet = new Set(unpaidOrders.map(o => o.customerId).filter(Boolean));
+       
+       const todayCustomers = currentCustomers.filter(c => {
+         const cDate = c.createdAt?.toDate ? c.createdAt.toDate() : new Date(c.createdAt);
+         return cDate && cDate >= today && cDate < tomorrow;
+       });
+       
+       const todayNewCustomers = todayCustomers.length;
+       const todayReferrals = todayCustomers.filter(c => c.referredById).length;
+
        setData({
          totalRevenue,
          newOrdersCount: filteredOrders.length,
@@ -161,7 +196,13 @@ export function useDashboardData(dateRange: DateRange): DashboardData {
          topCustomers: sortedTopCustomers,
          allOrders: activeOrders, // Only use active orders for table
          todayBookings: sortedTodayB,
-         todayOrdersCount
+         todayOrdersCount,
+         todayRevenue,
+         todayProfit,
+         todayNewCustomers,
+         todayReferrals,
+         totalUnpaidDebt,
+         unpaidCustomersCount: unpaidCustomersSet.size
        });
     };
 
@@ -183,10 +224,17 @@ export function useDashboardData(dateRange: DateRange): DashboardData {
       computeStats();
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'orders'));
 
+    const unsubscribeCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
+      currentCustomers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      isCustomersLoaded = true;
+      computeStats();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'customers'));
+
     return () => {
       unsubscribeProducts();
       unsubscribeBookings();
       unsubscribeOrders();
+      unsubscribeCustomers();
     };
   }, [dateRange]);
 

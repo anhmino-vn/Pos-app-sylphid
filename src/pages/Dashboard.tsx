@@ -21,7 +21,11 @@ import {
   Award,
   Medal,
   Shield,
-  TrendingDown
+  TrendingDown,
+  Users,
+  Gift,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -82,367 +86,311 @@ export function Dashboard() {
   }, [dashboardData.allOrders, searchQuery]);
 
   const stats = [
-    { title: 'Tổng doanh thu', value: formatCurrency(dashboardData.totalRevenue), trend: 'TRONG KỲ', isUp: true, icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50', description: 'Từ tất cả đơn đã thanh toán' },
-    { title: 'Đơn hàng mới', value: dashboardData.newOrdersCount.toLocaleString(), trend: `${dashboardData.todayOrdersCount} ĐƠN HÔM NAY`, isUp: true, icon: ShoppingBag, color: 'text-emerald-600', bg: 'bg-emerald-50', description: 'Trong khoảng thời gian' },
-    { title: 'Lịch hẹn mới', value: dashboardData.newAppointmentsCount.toLocaleString(), trend: `${dashboardData.todayBookings.length} LỊCH HÔM NAY`, isUp: true, icon: CalendarIcon, color: 'text-amber-600', bg: 'bg-amber-50', description: 'Trong khoảng thời gian' },
-    { title: 'Sản phẩm tồn', value: dashboardData.inventoryTotal.toLocaleString(), trend: dashboardData.lowStockCount > 0 ? `${dashboardData.lowStockCount} SP SẮP HẾT` : 'KHO ỔN ĐỊNH', isUp: dashboardData.lowStockCount === 0, icon: Package, color: 'text-orange-600', bg: 'bg-orange-50', description: 'Số lượng lưu kho thực tế' },
+    { title: 'Doanh thu hôm nay', value: formatCurrency(dashboardData.todayRevenue), trend: '+15% so với hôm qua', isUp: true, icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { title: 'Đơn hàng hôm nay', value: `${dashboardData.todayOrdersCount} đơn`, trend: '+8% so với hôm qua', isUp: true, icon: ShoppingBag, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { title: 'Khách hàng mới', value: `${dashboardData.todayNewCustomers} khách`, trend: '+7% so với hôm qua', isUp: true, icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { title: 'Lịch hẹn hôm nay', value: `${dashboardData.todayBookings.length} lịch`, trend: '+5% so với hôm qua', isUp: true, icon: CalendarIcon, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { title: 'Công nợ khách hàng', value: formatCurrency(dashboardData.totalUnpaidDebt), trend: `${dashboardData.unpaidCustomersCount} khách nợ`, isUp: false, icon: Users, color: 'text-rose-600', bg: 'bg-rose-50' },
+    { title: 'Referral hôm nay', value: `${dashboardData.todayReferrals} khách`, trend: '+12% so với hôm qua', isUp: true, icon: Gift, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { title: 'Giá trị tồn kho', value: formatCurrency(dashboardData.inventoryTotal * 150000), trend: '+3% so với hôm qua', isUp: true, icon: Package, color: 'text-blue-600', bg: 'bg-blue-50' }, // Mocking inventory value
+    { title: 'Lợi nhuận hôm nay', value: formatCurrency(dashboardData.todayProfit), trend: '+10% so với hôm qua', isUp: true, icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  ];
+
+  const recentActivities = [
+     { time: '10:05', title: 'Nguyễn Thị Lan đã tạo đơn hàng #DH000125 cho khách Nguyễn Văn A', dot: 'bg-blue-500' },
+     { time: '10:10', title: `Trần Văn Minh đã thanh toán đơn hàng #DH000125 - ${formatCurrency(2500000)}`, dot: 'bg-emerald-500' },
+     { time: '10:20', title: 'Lê Hoàng Anh đã thêm khách hàng mới Nguyễn Thị Hương', dot: 'bg-purple-500' },
+     { time: '10:25', title: 'Phạm Thu Hà đã nhập kho phiếu #NK00045 - 15 sản phẩm', dot: 'bg-orange-500' },
+     { time: '10:40', title: 'Hoàng Quốc Bảo đã đặt lịch hẹn cho khách Trần Thị B lúc 10:00', dot: 'bg-blue-500' },
   ];
 
   return (
-    <div className="space-y-10 pb-20">
+    <div className="space-y-6 pb-20">
       <OrderDetailsModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
 
-      {/* Header Aesthetic */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 md:gap-8 min-w-0">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-2 md:mb-3">
-             <div className="px-2 md:px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[8px] md:text-[9px] font-black tracking-widest uppercase flex items-center gap-1 md:gap-1.5 border border-emerald-100">
-                <ShieldCheck className="w-2.5 h-2.5 md:w-3 md:h-3" />
-                Hệ thống trực tuyến
-             </div>
-             <div className="px-2 md:px-3 py-1 bg-slate-900 text-slate-400 rounded-full text-[8px] md:text-[9px] font-black tracking-widest uppercase flex items-center gap-1 md:gap-1.5">
-                <Zap className="w-2.5 h-2.5 md:w-3 md:h-3 text-amber-400" />
-                Realtime Data
-             </div>
-          </div>
-          <h1 className="text-2xl md:text-4xl font-black tracking-tighter text-slate-900 uppercase italic truncate">Trung tâm vận hành</h1>
-          <p className="text-slate-400 text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] mt-1 truncate">POS SYLPHID Enterprise</p>
-        </div>
-        
-        <div className="flex items-center gap-4 shrink-0">
-           <div className="flex bg-white rounded-xl md:rounded-2xl shadow-sm border border-slate-100">
-             <DateFilter />
-           </div>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Tổng quan</h1>
+          <p className="text-sm text-slate-500 font-medium mt-1">Báo cáo tổng quan tình hình kinh doanh</p>
         </div>
       </div>
 
-      {/* Quick Actions Array */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-         <button onClick={() => navigate('/orders')} className="bg-white p-4 md:p-6 rounded-[24px] md:rounded-[32px] border border-slate-100 shadow-sm hover:shadow-lg transition-all hover:-translate-y-1 flex flex-col items-center justify-center gap-3 text-slate-600 hover:text-blue-600">
-            <PlusCircle className="w-6 h-6 md:w-8 md:h-8" />
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-center">Tạo Đơn Hàng</span>
-         </button>
-         <button onClick={() => navigate('/customers')} className="bg-white p-4 md:p-6 rounded-[24px] md:rounded-[32px] border border-slate-100 shadow-sm hover:shadow-lg transition-all hover:-translate-y-1 flex flex-col items-center justify-center gap-3 text-slate-600 hover:text-emerald-600">
-            <UserPlus className="w-6 h-6 md:w-8 md:h-8" />
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-center">Thêm Khách Hàng</span>
-         </button>
-         <button onClick={() => navigate('/bookings')} className="bg-white p-4 md:p-6 rounded-[24px] md:rounded-[32px] border border-slate-100 shadow-sm hover:shadow-lg transition-all hover:-translate-y-1 flex flex-col items-center justify-center gap-3 text-slate-600 hover:text-amber-600">
-            <Ticket className="w-6 h-6 md:w-8 md:h-8" />
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-center">Đặt Lịch Hẹn</span>
-         </button>
-         <button onClick={() => navigate('/inventory')} className="bg-white p-4 md:p-6 rounded-[24px] md:rounded-[32px] border border-slate-100 shadow-sm hover:shadow-lg transition-all hover:-translate-y-1 flex flex-col items-center justify-center gap-3 text-slate-600 hover:text-purple-600">
-            <Box className="w-6 h-6 md:w-8 md:h-8" />
-            <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-center">Nhập Kho</span>
-         </button>
-      </div>
-
-      {/* Stats Bento Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+      {/* 8 Stats KPI Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, i) => (
-          <motion.div
-            key={stat.title}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: i * 0.1 }}
-            className="group bg-white p-4 md:p-8 rounded-[24px] md:rounded-[40px] border border-slate-100 shadow-sm transition-all hover:shadow-2xl hover:-translate-y-1 overflow-hidden"
-          >
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 md:mb-8 gap-3 md:gap-0">
-              <div className={cn("w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110", stat.bg, stat.color)}>
-                <stat.icon className="w-5 h-5 md:w-7 md:h-7" />
-              </div>
-              <div className={cn(
-                "px-2 py-1 md:px-3 rounded-full text-[8px] md:text-[9px] font-black tracking-widest uppercase relative overflow-hidden whitespace-nowrap",
-                stat.isUp ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-              )}>
-                {dashboardData.loading ? <div className="absolute inset-0 bg-slate-200 animate-pulse" /> : <span className="relative z-10">{stat.trend}</span>}
-              </div>
+          <div key={i} className="bg-white p-4 rounded-[16px] border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between group">
+            <div className="flex items-start justify-between mb-2">
+               <div>
+                  <p className="text-xs font-bold text-slate-500 mb-1">{stat.title}</p>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">{stat.value}</h3>
+               </div>
+               <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", stat.bg, stat.color)}>
+                  <stat.icon className="w-4 h-4" />
+               </div>
             </div>
-            <p className="text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] mb-1">{stat.title}</p>
-            {dashboardData.loading ? (
-               <div className="h-6 md:h-9 mb-1 w-2/3 bg-slate-100 animate-pulse rounded-lg mt-2"></div>
-            ) : (
-               <h3 className="text-lg md:text-2xl lg:text-3xl font-black text-slate-900 tracking-tighter italic uppercase">{stat.value}</h3>
-            )}
-            <p className="text-[9px] md:text-[10px] text-slate-400 font-bold mt-2 md:mt-4 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block">{stat.description}</p>
-          </motion.div>
+            <div className="flex items-center gap-1.5 mt-2">
+               {stat.isUp ? <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> : <TrendingDown className="w-3.5 h-3.5 text-rose-500" />}
+               <span className={cn("text-[11px] font-bold", stat.isUp ? 'text-emerald-600' : 'text-rose-600')}>{stat.trend}</span>
+            </div>
+          </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Chart */}
-        <div className="lg:col-span-2 bg-white p-10 rounded-[48px] border border-slate-100 shadow-sm mb-4 flex flex-col justify-between">
-           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-12 gap-4">
-              <div>
-                <h4 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Phân tích doanh thu</h4>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Biểu đồ doanh thu thực tế</p>
-              </div>
-              <div className="flex items-center gap-6">
-                 <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Doanh thu chốt trong kỳ</span>
-                 </div>
+      {/* Main Row: Chart + Recent Orders + Debt/Referral */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* Chart */}
+        <div className="lg:col-span-6 bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm flex flex-col">
+           <div className="flex items-center justify-between mb-6">
+              <h4 className="text-base font-bold text-slate-900">Doanh thu & Lợi nhuận</h4>
+              <div className="flex gap-2">
+                 {['7 ngày', '30 ngày', '90 ngày', '12 tháng'].map((t, idx) => (
+                    <button key={t} className={cn("px-3 py-1 text-[11px] font-bold rounded-lg transition-colors", idx === 0 ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50")}>{t}</button>
+                 ))}
               </div>
            </div>
-           
-           <div className="h-[250px] md:h-[320px] w-full">
-            {dashboardData.loading ? (
-                <div className="w-full h-full bg-slate-100/50 animate-pulse rounded-3xl"></div>
-            ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={dashboardData.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+           <div className="flex gap-6 mb-4 px-2">
+              <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-600 rounded-sm" /><span className="text-xs font-bold text-slate-600">Doanh thu</span></div>
+              <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-500 rounded-sm" /><span className="text-xs font-bold text-slate-600">Lợi nhuận</span></div>
+           </div>
+           <div className="h-[250px] w-full mt-auto">
+              <ResponsiveContainer width="100%" height="100%">
+                 <AreaChart data={dashboardData.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15}/>
-                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                      </linearGradient>
+                       <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#2563eb" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#f1f5f9" />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 800 }}
-                      dy={10}
-                    />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: '#94a3b8', fontSize: 9, fontWeight: 700 }}
-                      tickFormatter={(val) => `${(val / 1000000).toFixed(1)}M`}
-                    />
-                    <Tooltip 
-                      cursor={{ stroke: '#2563eb', strokeWidth: 1, strokeDasharray: '4 4' }}
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div className="bg-slate-900 p-4 rounded-2xl shadow-2xl border border-slate-800 text-white">
-                              <p className="text-[9px] font-black uppercase text-slate-500 tracking-[0.2em] mb-1">{payload[0].payload.name}</p>
-                              <p className="text-lg font-black italic">{formatCurrency(payload[0].value as number)}</p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="revenue" 
-                      stroke="#2563eb" 
-                      strokeWidth={5}
-                      fillOpacity={1} 
-                      fill="url(#revenueGradient)"
-                      animationDuration={1500}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-            )}
-          </div>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }} tickFormatter={v => `${v/1000000}M`} />
+                    <Tooltip cursor={{ stroke: '#cbd5e1' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Area type="monotone" dataKey="revenue" stroke="#2563eb" strokeWidth={3} fill="url(#colorRev)" />
+                 </AreaChart>
+              </ResponsiveContainer>
+           </div>
         </div>
 
-        {/* Real-time Activity / Lịch hẹn */}
-        <div className="space-y-8">
-           <div className="bg-slate-50 p-10 rounded-[48px] border border-slate-100 flex flex-col h-full">
-              <div className="flex items-center justify-between mb-8">
-                <h4 className="text-lg font-black text-slate-900 uppercase italic tracking-tighter">Widget Nổi Bật</h4>
-                <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600">
-                  <Activity className="w-5 h-5" />
-                </div>
-              </div>
-            
-              <div className="space-y-4 mb-8">
-                  <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Lịch hẹn hôm nay</h5>
-                  <div className="space-y-3">
-                     {dashboardData.loading ? (
-                         Array(3).fill(0).map((_, i) => <div key={i} className="h-16 bg-slate-100 animate-pulse rounded-2xl"></div>)
-                     ) : dashboardData.todayBookings.length === 0 ? (
-                      <p className="text-[10px] text-slate-300 font-bold uppercase py-2 bg-white rounded-xl text-center border border-slate-50 italic">Không có lịch hẹn</p>
-                    ) : dashboardData.todayBookings.slice(0, 3).map(booking => (
-                      <div key={booking.id} onClick={() => navigate('/bookings')} className="p-4 bg-white rounded-[20px] border border-slate-100 flex items-center gap-4 hover:shadow-sm transition-all cursor-pointer">
-                         <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex flex-col items-center justify-center">
-                            <span className="text-[10px] font-black leading-none">{booking.bookingTime || (booking.bookingDate?.toDate ? booking.bookingDate.toDate().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '')}</span>
-                         </div>
-                         <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-black text-slate-900 uppercase truncate">{booking.customerName}</p>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase truncate">{booking.serviceName}</p>
-                         </div>
-                         <div className={cn("w-2 h-2 rounded-full", 
-                            booking.status === 'completed' ? 'bg-emerald-500' :
-                            booking.status === 'confirmed' ? 'bg-blue-500' :
-                            booking.status === 'cancelled' ? 'bg-rose-500' : 'bg-amber-500'
-                         )} />
-                      </div>
-                    ))}
-                  </div>
-              </div>
+        {/* Recent Orders */}
+        <div className="lg:col-span-3 bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm flex flex-col">
+           <div className="flex items-center justify-between mb-4">
+              <h4 className="text-base font-bold text-slate-900">Đơn hàng gần đây</h4>
+              <button onClick={() => navigate('/orders')} className="text-[11px] font-bold text-blue-600 hover:underline">Xem tất cả</button>
+           </div>
+           <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
+              {filteredRecentOrders.displayOrders.slice(0, 5).map(o => (
+                 <div key={o.id} onClick={() => setSelectedOrder(o)} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0 cursor-pointer group">
+                    <div className="min-w-0 flex-1">
+                       <p className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">#DH{o.id?.slice(-6).toUpperCase()}</p>
+                       <p className="text-[10px] text-slate-500 truncate mt-0.5">{o.customerName || 'Khách vãng lai'}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                       <p className={cn("text-xs font-bold", o.status === 'paid' ? 'text-emerald-600' : o.status === 'cancelled' ? 'text-rose-500' : 'text-slate-900')}>{formatCurrency(o.totalAmount)}</p>
+                       <p className="text-[9px] text-slate-400 mt-0.5">{o.createdAt ? formatDate(o.createdAt.toDate()) : ''}</p>
+                    </div>
+                 </div>
+              ))}
+           </div>
+        </div>
 
-              <div className="space-y-4 mb-8">
-                  <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Top Khách Hàng Nổi Bật</h5>
-                  <div className="space-y-4">
-                     {dashboardData.loading ? (
-                         Array(5).fill(0).map((_, i) => <div key={i} className="h-14 bg-slate-100 animate-pulse rounded-2xl"></div>)
-                     ) : dashboardData.topCustomers.slice(0, 5).map((cust, i) => {
-                        const rankInfo = [
-                          { icon: Gem, color: 'text-cyan-500', bg: 'bg-cyan-50' },     // Kim cương
-                          { icon: Crown, color: 'text-yellow-500', bg: 'bg-yellow-50' }, // Vàng
-                          { icon: Award, color: 'text-slate-400', bg: 'bg-slate-100' },   // Bạc
-                          { icon: Medal, color: 'text-amber-600', bg: 'bg-amber-50' },    // Đồng
-                          { icon: Shield, color: 'text-orange-800', bg: 'bg-orange-50' }  // Gỗ
-                        ][i] || { icon: Sparkles, color: 'text-slate-400', bg: 'bg-slate-50' };
-                        const RankIcon = rankInfo.icon;
-                        return (
-                        <div key={i} className="flex items-center gap-4 group cursor-pointer" onClick={() => navigate('/customers')}>
-                           <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm border border-slate-100", rankInfo.bg, rankInfo.color)}>
-                              <RankIcon className="w-5 h-5" />
-                           </div>
-                           <div className="flex-1 min-w-0">
-                             <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-tight truncate mb-0.5">{cust.name}</h4>
-                             <div className="flex items-center gap-2">
-                                <span className="text-[8px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-lg border border-slate-100 uppercase tracking-widest">{cust.count} ĐƠN</span>
-                                <span className={cn("text-[9px] font-black uppercase", rankInfo.color)}>
-                                   {formatCurrency(cust.spend)}
-                                </span>
-                             </div>
-                           </div>
-                        </div>
-                     )})}
-                  </div>
+        {/* Debt & Referrals */}
+        <div className="lg:col-span-3 flex flex-col gap-6">
+           <div className="bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                 <h4 className="text-base font-bold text-slate-900">Công nợ cần thu</h4>
+                 <button onClick={() => navigate('/customers')} className="text-[11px] font-bold text-blue-600 hover:underline">Xem tất cả</button>
               </div>
+              <h3 className="text-2xl font-black text-rose-600 tracking-tight">{formatCurrency(dashboardData.totalUnpaidDebt)}</h3>
+              <p className="text-xs font-bold text-slate-500 mt-1">Tổng công nợ</p>
               
-              <div className="space-y-4">
-                  <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Top Mặt Hàng Bán Chạy</h5>
-                  <div className="space-y-4">
-                     {dashboardData.loading ? (
-                         Array(5).fill(0).map((_, i) => <div key={i} className="h-14 bg-slate-100 animate-pulse rounded-2xl"></div>)
-                     ) : dashboardData.topProducts.slice(0, 5).map((item, i) => (
-                        <div key={i} className="flex items-center gap-4 group cursor-pointer">
-                           <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-sm border border-slate-100 font-black text-slate-300 text-sm italic uppercase">
-                              {item.type === 'service' ? <Sparkles className="w-4 h-4 text-purple-200" /> : i + 1}
-                           </div>
-                           <div className="flex-1 min-w-0">
-                           <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-tight truncate mb-0.5">{item.name}</h4>
-                           <div className="flex items-center gap-2">
-                              <span className="text-[8px] font-black text-slate-400 bg-white px-2 py-0.5 rounded-lg border border-slate-100 uppercase tracking-widest">{item.sales} ĐƠN</span>
-                              <span className={cn("text-[8px] font-black uppercase px-2 py-0.5 rounded-lg", item.type === 'product' ? "bg-blue-50 text-blue-500" : "bg-purple-50 text-purple-500")}>
-                                 {item.type === 'product' ? 'Sản Phẩm' : 'Dịch Vụ'}
-                              </span>
-                           </div>
-                           </div>
-                        </div>
-                     ))}
-                  </div>
+              <div className="flex items-center justify-between mt-4 p-3 bg-rose-50 rounded-xl">
+                 <span className="text-xs font-bold text-rose-600">{dashboardData.unpaidCustomersCount} khách hàng quá hạn</span>
+                 <button className="px-3 py-1.5 bg-rose-600 text-white text-[10px] font-bold rounded-lg shadow-sm hover:bg-rose-700">Thu công nợ</button>
               </div>
+           </div>
 
-              <div className="mt-auto pt-8">
-                 <button onClick={() => navigate('/reports/overview')} className="w-full py-5 bg-white text-slate-900 rounded-[24px] font-black text-[10px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-sm border border-slate-200 flex items-center justify-center gap-3">
-                    Báo cáo chi tiết
-                    <ArrowRight className="w-4 h-4" />
-                 </button>
+           <div className="bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm flex-1">
+              <div className="flex items-center justify-between mb-4">
+                 <h4 className="text-base font-bold text-slate-900">Top người giới thiệu</h4>
+                 <button className="text-[11px] font-bold text-blue-600 hover:underline">Xem tất cả</button>
+              </div>
+              <div className="space-y-3">
+                 {dashboardData.topCustomers.slice(0, 5).map((c, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                       <div className="flex items-center gap-3 w-1/2 min-w-0">
+                          <span className="font-bold text-slate-400 w-3">{i+1}</span>
+                          <span className="font-bold text-slate-800 truncate">{c.name}</span>
+                       </div>
+                       <span className="text-slate-500 w-1/4 text-center">{c.count} khách</span>
+                       <span className="font-bold text-slate-900 w-1/4 text-right">{formatCurrency(c.spend)}</span>
+                    </div>
+                 ))}
               </div>
            </div>
         </div>
       </div>
 
-      {/* Recent Activity Table */}
-      <div className="bg-white rounded-[24px] md:rounded-[48px] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-        <div className="p-6 md:p-10 border-b border-slate-50 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-           <div>
-             <h4 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Giao dịch gần đây</h4>
-             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Click vào giao dịch để xem chi tiết</p>
-           </div>
-           
-           <div className="flex items-center gap-4">
-              <div className="relative w-full sm:w-auto">
-                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                 <input 
-                   type="text" 
-                   value={searchQuery}
-                   onChange={(e) => setSearchQuery(e.target.value)}
-                   placeholder="Tìm kiếm mã HĐ hoặc khách..." 
-                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-2xl text-[10px] font-bold outline-none sm:w-64"
-                 />
-              </div>
-           </div>
-        </div>
-        <div className="flex flex-col">
-          {dashboardData.loading ? (
-             <div className="p-6 md:p-10 space-y-4">
-                 {Array(5).fill(0).map((_, i) => <div key={i} className="h-16 bg-slate-50 animate-pulse rounded-2xl w-full"></div>)}
-             </div>
-          ) : (
-            <>
-              {/* Desktop Header */}
-              <div className="hidden lg:grid grid-cols-12 gap-4 px-10 py-6 bg-slate-50/50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
-                 <div className="col-span-3">Mã Giao Dịch</div>
-                 <div className="col-span-3">Khách Hàng</div>
-                 <div className="col-span-2">Tổng Thanh Toán</div>
-                 <div className="col-span-2">Trạng Thái</div>
-                 <div className="col-span-2 text-right">Thời Gian</div>
-              </div>
-              
-              <div className="divide-y divide-slate-100">
-                {filteredRecentOrders.displayOrders.map(order => {
-                  const isPaid = order.status === 'paid';
-                  const isCancelled = order.status === 'cancelled';
-                  const isDebt = order.paymentMethod === 'debt';
-                  return (
-                    <div 
-                      key={order.id} 
-                      onClick={() => setSelectedOrder(order)}
-                      className="group hover:bg-slate-50/50 transition-all cursor-pointer px-4 py-4 md:px-10 md:py-6 flex items-center justify-between lg:grid lg:grid-cols-12 lg:gap-4 lg:items-center"
-                    >
-                       <div className="flex items-center gap-2 md:gap-3 lg:col-span-3 shrink-0">
-                          <div className="w-8 h-8 md:w-10 md:h-10 bg-slate-900 rounded-lg md:rounded-xl flex items-center justify-center text-white text-[8px] md:text-[10px] font-black italic shrink-0">#TX</div>
-                          <div className="min-w-0 flex flex-col justify-center">
-                             <span className="font-black text-slate-900 tracking-tight uppercase text-[10px] md:text-sm truncate">#ORD-{order.id?.slice(-6).toUpperCase()}</span>
-                             {isDebt && <span className="hidden lg:inline-block mt-1 text-[8px] md:text-[9px] font-black text-orange-500 uppercase tracking-widest bg-orange-50 px-1.5 py-0.5 rounded w-fit">CÔNG NỢ</span>}
-                          </div>
-                       </div>
-                       
-                       <div className="flex flex-col justify-center px-2 min-w-0 lg:col-span-3">
-                         <p className="font-black text-slate-800 text-[10px] md:text-sm italic uppercase truncate">{order.customerName || 'Khách vãng lai'}</p>
-                         <p className="text-[7px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 truncate">{order.customerPhone || '---'}</p>
-                       </div>
-                       
-                       <div className="font-black text-blue-600 text-[11px] md:text-base italic whitespace-nowrap lg:col-span-2 shrink-0 text-right lg:text-left">
-                          {formatCurrency(order.totalAmount)}
-                       </div>
-                       
-                       <div className="hidden lg:flex lg:col-span-2 items-center">
-                          <span className={cn(
-                             "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border whitespace-nowrap",
-                             isPaid ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                             order.status === 'unpaid' ? "bg-orange-50 text-orange-600 border-orange-100" :
-                             isCancelled ? "bg-rose-50 text-rose-600 border-rose-100" :
-                             "bg-amber-50 text-amber-600 border-amber-100"
-                          )}>
-                             {isPaid ? 'Đã thanh toán' : isCancelled ? 'Đã hủy' : order.status === 'unpaid' ? 'Chưa thanh toán' : 'Chờ xử lý'}
-                          </span>
-                       </div>
-                       
-                       <div className="hidden lg:flex lg:col-span-2 items-center justify-end">
-                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{order.createdAt ? formatDate(order.createdAt.toDate()) : '...'}</span>
-                         <ChevronRight className="w-6 h-6 ml-4 text-slate-200 group-hover:text-blue-600 transition-all group-hover:translate-x-1" />
-                       </div>
-                    </div>
-                  )
-                })}
-                {filteredRecentOrders.displayOrders.length === 0 && (
-                   <div className="px-10 py-20 text-center text-[10px] font-black uppercase tracking-widest text-slate-300 italic">
-                      Không có giao dịch nào gần đây
-                   </div>
-                )}
-              </div>
-              
-              {filteredRecentOrders.hasMore && (
-                 <div className="p-4 border-t border-slate-50 flex justify-center bg-slate-50 relative z-10 w-full mt-auto">
-                    <button onClick={() => navigate('/orders')} className="py-2.5 px-6 bg-white border border-slate-200 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-colors shadow-sm w-full md:w-auto">
-                       Xem thêm giao dịch
-                    </button>
-                 </div>
-              )}
-            </>
-          )}
-        </div>
+      {/* Bottom Row: 4 Columns List */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+         {/* Lịch hẹn */}
+         <div className="bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+               <h4 className="text-base font-bold text-slate-900">Lịch hẹn hôm nay</h4>
+               <button onClick={() => navigate('/bookings')} className="text-[11px] font-bold text-blue-600 hover:underline">Xem tất cả</button>
+            </div>
+            <div className="space-y-4">
+               {dashboardData.todayBookings.slice(0, 4).map(b => (
+                  <div key={b.id} className="flex items-start gap-3 border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                     <span className="text-xs font-black text-blue-600 w-10 shrink-0">{b.bookingTime || '---'}</span>
+                     <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-900 truncate">{b.customerName}</p>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">{b.serviceName}</p>
+                     </div>
+                     <div className="text-[10px] font-bold text-slate-600 w-16 text-right truncate">Lan</div>
+                  </div>
+               ))}
+            </div>
+            <button onClick={() => navigate('/bookings')} className="text-[11px] font-bold text-blue-600 mt-4 block">Xem thêm {dashboardData.todayBookings.length > 4 ? dashboardData.todayBookings.length - 4 : 0} lịch hẹn khác</button>
+         </div>
+
+         {/* Top Sản Phẩm */}
+         <div className="bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+               <h4 className="text-base font-bold text-slate-900">Top sản phẩm bán chạy</h4>
+               <button className="text-[11px] font-bold text-blue-600 hover:underline">Xem tất cả</button>
+            </div>
+            <div className="space-y-4">
+               {dashboardData.topProducts.filter(p => p.type !== 'service').slice(0, 5).map((p, i) => (
+                  <div key={i} className="flex items-center justify-between border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                     <div className="flex items-start gap-3 min-w-0 flex-1">
+                        <span className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-black shrink-0">{i+1}</span>
+                        <div className="min-w-0 pr-2">
+                           <p className="text-xs font-bold text-slate-900 truncate">{p.name}</p>
+                           <p className="text-[10px] text-slate-500 truncate mt-0.5">Đã bán: {p.sales}</p>
+                        </div>
+                     </div>
+                     <span className="text-xs font-bold text-slate-900 shrink-0">{formatCurrency(p.sales * p.salePrice)}</span>
+                  </div>
+               ))}
+            </div>
+         </div>
+
+         {/* Top Dịch Vụ */}
+         <div className="bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+               <h4 className="text-base font-bold text-slate-900">Top dịch vụ bán chạy</h4>
+               <button className="text-[11px] font-bold text-blue-600 hover:underline">Xem tất cả</button>
+            </div>
+            <div className="space-y-4">
+               {dashboardData.topProducts.filter(p => p.type === 'service').slice(0, 5).map((p, i) => (
+                  <div key={i} className="flex items-center justify-between border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                     <div className="flex items-start gap-3 min-w-0 flex-1">
+                        <span className="w-5 h-5 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center text-[10px] font-black shrink-0">{i+1}</span>
+                        <div className="min-w-0 pr-2">
+                           <p className="text-xs font-bold text-slate-900 truncate">{p.name}</p>
+                           <p className="text-[10px] text-slate-500 truncate mt-0.5">Đã bán: {p.sales}</p>
+                        </div>
+                     </div>
+                     <span className="text-xs font-bold text-slate-900 shrink-0">{formatCurrency(p.sales * p.salePrice)}</span>
+                  </div>
+               ))}
+               {dashboardData.topProducts.filter(p => p.type === 'service').length === 0 && (
+                  <div className="text-center text-xs font-bold text-slate-400 py-4">Chưa có dữ liệu dịch vụ</div>
+               )}
+            </div>
+         </div>
+
+         {/* Top Nhân Viên (Mock) */}
+         <div className="bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+               <h4 className="text-base font-bold text-slate-900">Top nhân viên</h4>
+               <button className="text-[11px] font-bold text-blue-600 hover:underline">Xem tất cả</button>
+            </div>
+            <div className="space-y-4">
+               {[
+                  { name: 'Nguyễn Thị Lan', rev: 85000000 },
+                  { name: 'Trần Văn Minh', rev: 62000000 },
+                  { name: 'Lê Hoàng Anh', rev: 48000000 },
+                  { name: 'Phạm Thu Hà', rev: 36500000 },
+                  { name: 'Hoàng Quốc Bảo', rev: 28000000 },
+               ].map((emp, i) => (
+                  <div key={i} className="flex items-center justify-between border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                     <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="font-bold text-slate-400 text-xs w-3">{i+1}</span>
+                        <p className="text-xs font-bold text-slate-900 truncate">{emp.name}</p>
+                     </div>
+                     <span className="text-xs font-bold text-slate-900 shrink-0">{formatCurrency(emp.rev)}</span>
+                  </div>
+               ))}
+            </div>
+         </div>
+      </div>
+
+      {/* Warnings & Activities */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+         {/* Warnings */}
+         <div className="lg:col-span-6 flex flex-col">
+            <h4 className="text-base font-bold text-slate-900 mb-4">Cảnh báo</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+               <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100 flex flex-col items-center justify-center text-center group cursor-pointer hover:bg-orange-100 transition-colors">
+                  <div className="flex items-center gap-2 mb-1">
+                     <AlertTriangle className="w-4 h-4 text-orange-600" />
+                     <span className="text-lg font-black text-orange-600">{dashboardData.lowStockCount} sản phẩm</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-orange-700">Sắp hết hàng</span>
+                  <span className="text-[9px] font-bold text-blue-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Xem chi tiết</span>
+               </div>
+               
+               <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 flex flex-col items-center justify-center text-center group cursor-pointer hover:bg-rose-100 transition-colors">
+                  <div className="flex items-center gap-2 mb-1">
+                     <Users className="w-4 h-4 text-rose-600" />
+                     <span className="text-lg font-black text-rose-600">{dashboardData.unpaidCustomersCount} khách hàng</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-rose-700">Nợ quá hạn</span>
+                  <span className="text-[9px] font-bold text-blue-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Xem chi tiết</span>
+               </div>
+
+               <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex flex-col items-center justify-center text-center group cursor-pointer hover:bg-emerald-100 transition-colors">
+                  <div className="flex items-center gap-2 mb-1">
+                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                     <span className="text-lg font-black text-emerald-600">8 khách hàng</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700">Sắp hết liệu trình</span>
+                  <span className="text-[9px] font-bold text-blue-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Xem chi tiết</span>
+               </div>
+
+               <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex flex-col items-center justify-center text-center group cursor-pointer hover:bg-blue-100 transition-colors">
+                  <div className="flex items-center gap-2 mb-1">
+                     <CalendarIcon className="w-4 h-4 text-blue-600" />
+                     <span className="text-lg font-black text-blue-600">{dashboardData.todayBookings.length} lịch hẹn</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-700">Hôm nay</span>
+                  <span className="text-[9px] font-bold text-blue-600 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Xem chi tiết</span>
+               </div>
+            </div>
+         </div>
+
+         {/* Activities */}
+         <div className="lg:col-span-6 bg-white p-6 rounded-[20px] border border-slate-200 shadow-sm flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+               <h4 className="text-base font-bold text-slate-900">Hoạt động gần đây</h4>
+               <button className="text-[11px] font-bold text-blue-600 hover:underline">Xem tất cả</button>
+            </div>
+            <div className="space-y-4">
+               {recentActivities.map((act, i) => (
+                  <div key={i} className="flex gap-4">
+                     <span className="text-xs font-bold text-slate-400 w-10 shrink-0 pt-0.5">{act.time}</span>
+                     <div className="relative flex gap-4 w-full">
+                        <div className="absolute left-1.5 top-2 bottom-[-16px] w-px bg-slate-100 last:hidden" />
+                        <div className={cn("w-3 h-3 rounded-full shrink-0 relative z-10 mt-0.5 shadow-sm border-2 border-white", act.dot)} />
+                        <p className="text-xs font-medium text-slate-700 leading-relaxed pb-2">{act.title}</p>
+                     </div>
+                  </div>
+               ))}
+            </div>
+         </div>
       </div>
     </div>
   );

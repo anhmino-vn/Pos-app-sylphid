@@ -18,6 +18,10 @@ import {
   BookOpen,
   Warehouse,
   BarChart2,
+  ChevronDown,
+  Plus,
+  Activity,
+  Gift
 } from "lucide-react";
 import { supabase, handleSupabaseError, OperationType } from '../lib/supabase';
 import { cn } from "../lib/utils";
@@ -120,10 +124,16 @@ export function Layout() {
   const [expandedMenus, setExpandedMenus] = React.useState<
     Record<string, boolean>
   >({
-    "Sản phẩm": false,
+    "POS Bán hàng": false,
+    "CRM Khách hàng": false,
+    "Lịch hẹn": false,
+    "Sức khỏe & Liệu trình": false,
+    "Sản phẩm & Dịch vụ": false,
+    "Kho": false,
+    "Giới thiệu (Referral)": false,
     "Nhân sự": false,
-    "Kho hàng": false,
     "Báo cáo": false,
+    "Cài đặt": false,
   });
 
   const toggleSubmenu = (name: string, e: React.MouseEvent) => {
@@ -135,43 +145,75 @@ export function Layout() {
   };
 
   const navItems = [
-    { name: "Dashboard", icon: LayoutDashboard, path: "/" },
-    ...(profile?.role === "admin" || profile?.permissions?.products?.view
+    { name: "Tổng quan", icon: LayoutDashboard, path: "/" },
+    ...(profile?.role === "admin" || profile?.permissions?.orders?.view
       ? [
           {
-            name: "Sản phẩm",
-            icon: Package,
-            path: "/products",
+            name: "POS Bán hàng",
+            icon: ShoppingCart,
+            path: "/orders",
             subItems: [
-              { name: "Danh sách sản phẩm", path: "/products" },
-              ...(profile?.role === "admin" ||
-              profile?.permissions?.documents?.view !== false
-                ? [{ name: "Hướng dẫn sử dụng", path: "/guides" }]
-                : []),
+              { name: "Tạo đơn hàng", path: "/orders/create" },
+              { name: "Hóa đơn", path: "/orders" },
+              { name: "Thanh toán", path: "/orders/payments" },
             ],
           },
         ]
       : []),
-    ...(profile?.role === "admin" || profile?.permissions?.services?.view
-      ? [{ name: "Dịch vụ", icon: Sparkles, path: "/services" }]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.services?.view
-      ? [{ name: "Đặt lịch", icon: Calendar, path: "/bookings" }]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.orders?.view
-      ? [{ name: "Đơn hàng", icon: ShoppingCart, path: "/orders" }]
-      : []),
     ...(profile?.role === "admin" || profile?.permissions?.customers?.view
       ? [
           {
-            name: "Khách hàng",
+            name: "CRM Khách hàng",
             icon: Users,
             path: "/customers",
             subItems: [
               { name: "Tất cả khách hàng", path: "/customers" },
               { name: "Khách hàng giới thiệu", path: "/customers/referrers" },
               { name: "Khách được giới thiệu", path: "/customers/referred" },
-              { name: "Lịch sử hoa hồng", path: "/customers/commissions" },
+              { name: "Thành viên", path: "/customers/members" },
+              { name: "Công nợ", path: "/customers/debts" },
+            ],
+          },
+        ]
+      : []),
+    ...(profile?.role === "admin" || profile?.permissions?.services?.view
+      ? [
+          {
+            name: "Lịch hẹn",
+            icon: Calendar,
+            path: "/bookings",
+            subItems: [
+              { name: "Lịch hẹn", path: "/bookings" },
+              { name: "Lịch nhân viên", path: "/bookings/staff" },
+            ],
+          },
+        ]
+      : []),
+    ...(profile?.role === "admin" || profile?.permissions?.services?.view
+      ? [
+          {
+            name: "Sức khỏe & Liệu trình",
+            icon: Activity,
+            path: "/health",
+            subItems: [
+              { name: "Hồ sơ sức khỏe", path: "/health/records" },
+              { name: "Liệu trình", path: "/health/treatments" },
+              { name: "Nhật ký trị liệu", path: "/health/logs" },
+              { name: "Kết quả tầm soát", path: "/health/screening" },
+            ],
+          },
+        ]
+      : []),
+    ...(profile?.role === "admin" || profile?.permissions?.products?.view
+      ? [
+          {
+            name: "Sản phẩm & Dịch vụ",
+            icon: Package,
+            path: "/products",
+            subItems: [
+              { name: "Danh mục", path: "/products/categories" },
+              { name: "Sản phẩm", path: "/products" },
+              { name: "Dịch vụ", path: "/services" },
             ],
           },
         ]
@@ -179,16 +221,31 @@ export function Layout() {
     ...(profile?.role === "admin" || profile?.permissions?.stock?.view
       ? [
           {
-            name: "Kho hàng",
+            name: "Kho",
             icon: Warehouse,
             path: "/inventory",
             subItems: [
               { name: "Tổng quan kho", path: "/inventory/overview" },
               { name: "Nhập kho", path: "/inventory/imports" },
               { name: "Xuất kho", path: "/inventory/exports" },
-              { name: "Kiểm kê kho", path: "/inventory/reconcile" },
+              { name: "Kiểm kho", path: "/inventory/reconcile" },
+              { name: "Điều chỉnh kho", path: "/inventory/adjustments" },
               { name: "Lịch sử kho", path: "/inventory/logs" },
               { name: "Nhà cung cấp", path: "/inventory/suppliers" },
+            ],
+          },
+        ]
+      : []),
+    ...(profile?.role === "admin" || profile?.permissions?.customers?.view
+      ? [
+          {
+            name: "Giới thiệu (Referral)",
+            icon: Gift,
+            path: "/referrals",
+            subItems: [
+              { name: "Hoa hồng", path: "/referrals/commissions" },
+              { name: "Bảng xếp hạng", path: "/referrals/leaderboard" },
+              { name: "Báo cáo", path: "/referrals/reports" },
             ],
           },
         ]
@@ -200,8 +257,8 @@ export function Layout() {
             icon: UserCog,
             path: "/users",
             subItems: [
-              { name: "Danh sách nhân sự", path: "/users" },
-              { name: "Nhật ký hoạt động", path: "/activity-logs" },
+              { name: "Nhân viên", path: "/users" },
+              { name: "Phân quyền", path: "/users/roles" },
             ],
           },
         ]
@@ -214,20 +271,31 @@ export function Layout() {
             path: "/reports",
             subItems: [
               { name: "Tổng quan", path: "/reports/overview" },
-              { name: "Báo cáo doanh thu", path: "/reports/revenue" },
-              { name: "Báo cáo đơn hàng", path: "/reports/orders" },
-              { name: "Báo cáo sản phẩm", path: "/reports/products" },
-              { name: "Báo cáo dịch vụ", path: "/reports/services" },
-              { name: "Báo cáo kho", path: "/reports/inventory" },
-              { name: "Báo cáo nhân viên", path: "/reports/staff" },
-              { name: "Báo cáo khách hàng", path: "/reports/customers" },
-              { name: "Báo cáo giới thiệu", path: "/reports/referrals" },
+              { name: "Doanh thu", path: "/reports/revenue" },
+              { name: "Đơn hàng", path: "/reports/orders" },
+              { name: "Sản phẩm", path: "/reports/products" },
+              { name: "Dịch vụ", path: "/reports/services" },
+              { name: "Nhân viên", path: "/reports/staff" },
+              { name: "Khách hàng", path: "/reports/customers" },
+              { name: "Giới thiệu", path: "/reports/referrals" },
+              { name: "Kho", path: "/reports/inventory" },
             ],
           },
         ]
       : []),
     ...(profile?.role === "admin" || profile?.permissions?.settings?.view
-      ? [{ name: "Cài đặt", icon: Settings, path: "/settings" }]
+      ? [
+          {
+            name: "Cài đặt",
+            icon: Settings,
+            path: "/settings",
+            subItems: [
+              { name: "Hệ thống", path: "/settings/system" },
+              { name: "Audit Log", path: "/activity-logs" },
+              { name: "Backup", path: "/settings/backup" },
+            ],
+          },
+        ]
       : []),
   ];
 
@@ -249,14 +317,14 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed md:relative z-[70] flex flex-col h-full bg-[#3b5998] transition-all duration-300 shadow-2xl md:shadow-none",
+          "fixed md:relative z-[70] flex flex-col h-full bg-white border-r border-slate-200 transition-all duration-300 shadow-2xl md:shadow-none",
           isSidebarOpen
-            ? "w-64 translate-x-0"
-            : "-translate-x-full md:translate-x-0 md:w-20",
+            ? "w-[260px] translate-x-0"
+            : "-translate-x-full md:translate-x-0 md:w-[84px]",
         )}
       >
-        <div className="p-6 border-b border-white/10 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 flex items-center justify-center bg-blue-600 font-bold text-white">
+        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 flex items-center justify-center bg-blue-600 font-bold text-white shadow-md">
             {/* Note: User must upload icon.png into public/ for this to display */}
             <img
               src="/icon.png"
@@ -264,24 +332,23 @@ export function Layout() {
               className="w-full h-full object-cover"
               onError={(e) => {
                 e.currentTarget.style.display = "none";
-                e.currentTarget.parentElement!.innerText = "P";
+                e.currentTarget.parentElement!.innerText = "S";
               }}
             />
           </div>
           {isSidebarOpen && (
-            <span className="font-bold text-xl tracking-tight text-white uppercase">
-              POS SYLPHID
-            </span>
+            <div className="flex flex-col">
+               <span className="font-black text-lg tracking-tight text-slate-900 leading-tight">
+                 Sylphid
+               </span>
+               <span className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Health & Wellness</span>
+            </div>
           )}
         </div>
 
         <nav
-          className="flex-1 overflow-y-auto min-h-0 px-4 space-y-1 py-6"
-          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          className="flex-1 overflow-y-auto min-h-0 px-4 space-y-1 py-6 custom-scrollbar"
         >
-          <style>{`
-            nav::-webkit-scrollbar { display: none; }
-          `}</style>
           {navItems.map((item) => (
             <div key={item.name}>
               {item.subItems ? (
@@ -289,13 +356,13 @@ export function Layout() {
                   <button
                     onClick={(e) => toggleSubmenu(item.name, e)}
                     className={cn(
-                      "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative text-blue-100 hover:text-white hover:bg-white/10",
+                      "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative text-slate-500 hover:text-slate-900 hover:bg-slate-50",
                     )}
                   >
                     <div className="flex items-center gap-3">
                       <item.icon className="w-5 h-5 shrink-0 transition-colors" />
                       {isSidebarOpen && (
-                        <span className="font-medium">{item.name}</span>
+                        <span className="font-bold text-sm tracking-tight">{item.name}</span>
                       )}
                     </div>
                   </button>
@@ -305,10 +372,8 @@ export function Layout() {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden flex flex-col ml-11 mt-1 space-y-1 relative"
+                        className="overflow-hidden flex flex-col ml-[22px] pl-6 mt-1 space-y-1 border-l border-slate-100 relative"
                       >
-                        {/* Connection line */}
-                        <div className="absolute left-[-16px] top-0 bottom-3 w-px bg-white/20" />
                         {item.subItems.map((subItem) => (
                           <NavLink
                             key={subItem.path}
@@ -319,15 +384,15 @@ export function Layout() {
                             }
                             className={({ isActive }) =>
                               cn(
-                                "text-sm px-3 py-2 rounded-lg transition-colors relative block",
+                                "text-xs font-bold px-4 py-2.5 rounded-lg transition-colors relative block",
                                 isActive
-                                  ? "text-white font-bold bg-white/20"
-                                  : "text-blue-100 hover:text-white hover:bg-white/10",
+                                  ? "text-blue-600 bg-blue-50/50"
+                                  : "text-slate-400 hover:text-slate-900 hover:bg-slate-50",
                               )
                             }
                           >
-                            {/* Branch line */}
-                            <div className="absolute left-[-16px] top-1/2 w-3 h-px bg-white/20" />
+                            {/* Branch line indicator */}
+                            <div className="absolute left-[-24px] top-1/2 w-4 h-px bg-slate-100" />
                             {subItem.name}
                           </NavLink>
                         ))}
@@ -342,8 +407,8 @@ export function Layout() {
                     cn(
                       "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative",
                       isActive
-                        ? "bg-white/20 text-white shadow-sm font-bold"
-                        : "text-blue-100 hover:text-white hover:bg-white/10",
+                        ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-bold"
+                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-50 font-bold",
                     )
                   }
                 >
@@ -351,10 +416,10 @@ export function Layout() {
                     className={cn("w-5 h-5 shrink-0 transition-colors")}
                   />
                   {isSidebarOpen && (
-                    <span className="font-medium">{item.name}</span>
+                    <span className="text-sm tracking-tight">{item.name}</span>
                   )}
                   {!isSidebarOpen && (
-                    <div className="absolute left-16 bg-[#3b5998] text-white px-3 py-2 rounded-lg text-xs invisible md:group-hover:visible whitespace-nowrap z-50 border border-white/10 shadow-xl">
+                    <div className="absolute left-[70px] bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-bold invisible md:group-hover:visible whitespace-nowrap z-50 shadow-xl">
                       {item.name}
                     </div>
                   )}
@@ -364,24 +429,24 @@ export function Layout() {
           ))}
         </nav>
 
-        <div className="p-4 mt-auto">
-          <div className="bg-black/10 rounded-2xl p-4 mb-4 border border-white/5">
-            <p className="text-blue-100 text-[10px] uppercase tracking-widest font-bold mb-2">
+        <div className="p-4 mt-auto border-t border-slate-100">
+          <div className="bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100">
+            <p className="text-slate-400 text-[9px] uppercase tracking-[0.2em] font-black mb-2">
               Gói dịch vụ
             </p>
-            <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
               <div
-                className="bg-blue-300 h-full rounded-full"
+                className="bg-blue-600 h-full rounded-full"
                 style={{ width: "75%" }}
               ></div>
             </div>
-            <p className="text-white text-[10px] mt-2 font-medium">
+            <p className="text-slate-700 text-[10px] mt-2 font-black tracking-tight">
               3,450 / 5,000 SKUs
             </p>
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-blue-100 hover:text-white hover:bg-white/10 transition-all font-medium"
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-rose-500 hover:bg-rose-50 transition-all font-bold"
           >
             <LogOut className="w-5 h-5 shrink-0" />
             {isSidebarOpen && <span>Đăng xuất</span>}
@@ -392,32 +457,36 @@ export function Layout() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#F8FAFC]">
         {/* Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 shrink-0 relative z-50">
-          <div className="flex items-center gap-3 sm:gap-6 w-full max-w-xl">
+        <header className="h-[72px] bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 shrink-0 relative z-50">
+          <div className="flex items-center gap-3 sm:gap-6 flex-1 min-w-0">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500"
+              className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 shrink-0"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="relative group w-full hidden sm:block">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <div className="relative group w-full max-w-2xl hidden md:block">
+              <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Tìm kiếm đơn hàng, sản phẩm..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 transition-all"
+                placeholder="Tìm kiếm khách hàng, đơn hàng, lịch hẹn, sản phẩm..."
+                className="w-full pl-12 pr-12 py-3 bg-slate-50 border border-slate-100 rounded-[16px] text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400"
               />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                 <kbd className="hidden sm:inline-block px-2 py-1 text-[10px] font-bold text-slate-400 bg-white border border-slate-200 rounded-lg">Ctrl + K</kbd>
+              </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3 sm:gap-6">
-            <div className="relative">
+            <div className="relative hidden sm:block">
                <button 
                   onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
-                  className={cn("w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg transition-colors border", 
-                                isCreateMenuOpen ? "bg-emerald-600 text-white border-emerald-600" : "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100")}
+                  className={cn("px-4 py-2.5 rounded-[14px] flex items-center gap-2 font-bold text-sm transition-all border shadow-sm", 
+                                isCreateMenuOpen ? "bg-blue-700 text-white border-blue-700" : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700")}
                >
-                 +
+                 <Plus className="w-4 h-4" />
+                 Tạo nhanh
                </button>
                <AnimatePresence>
                  {isCreateMenuOpen && (
@@ -566,21 +635,21 @@ export function Layout() {
               </AnimatePresence>
             </div>
 
-            <div className="flex items-center gap-4 pl-6 border-l border-slate-200">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900">
-                  Admin POS SYLPHID
-                </p>
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black">
-                  Quản lý kho
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-slate-200 overflow-hidden ring-2 ring-white shadow-sm">
+            <div className="flex items-center gap-4 pl-4 sm:pl-6 border-l border-slate-200 ml-2">
+              <div className="w-[42px] h-[42px] rounded-full bg-slate-200 overflow-hidden shadow-sm border-2 border-white ring-1 ring-slate-100">
                 <img
-                  src={`https://ui-avatars.com/api/?name=${user?.email}&background=1e3a8a&color=fff`}
+                  src={`https://ui-avatars.com/api/?name=${user?.email}&background=e2e8f0&color=475569&bold=true`}
                   alt="avatar"
                   className="w-full h-full object-cover"
                 />
+              </div>
+              <div className="text-left hidden sm:block pr-2">
+                <p className="text-[13px] font-black text-slate-900 truncate max-w-[120px]">
+                  {profile?.name || 'Nguyễn An'}
+                </p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mt-0.5">
+                  Admin
+                </p>
               </div>
             </div>
           </div>

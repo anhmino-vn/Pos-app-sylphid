@@ -13,6 +13,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Products } from './pages/Products';
 import { Orders } from './pages/Orders';
+import { CreateOrder } from './pages/CreateOrder';
 import { Customers } from './pages/Customers';
 import { Inventory } from './pages/Inventory';
 import { Users } from './pages/Users';
@@ -73,7 +74,37 @@ export default function App() {
            
            setProfile({ ...data, permissions: finalPermissions } as UserProfile);
         } else {
-           setProfile(null);
+           // Auto-create profile if missing
+           const isAdmin = authUser.email === 'anhmino.it@gmail.com' || authUser.email === 'ngocanhvux4@gmail.com';
+           const adminPermissions = {
+             products: { view: true, add: true, edit: true, delete: true },
+             orders: { view: true, add: true, edit: true, delete: true },
+             stock: { view: true, import: true, export: true },
+             customers: { view: true, edit: true },
+             reports: { view: true },
+             services: { view: true, add: true, edit: true, delete: true },
+             documents: { view: true, add: true, edit: true, delete: true, print: true },
+             staff: { view: true, add: true, edit: true }
+           };
+           const defaultPermissions = {
+             products: { view: true, add: isAdmin, edit: isAdmin, delete: isAdmin },
+             orders: { view: true, add: true, edit: isAdmin, delete: isAdmin },
+             stock: { view: true, import: isAdmin, export: isAdmin },
+             customers: { view: true, edit: true },
+             reports: { view: isAdmin }
+           };
+           
+           const newProfile = {
+             id: authUser.id,
+             email: authUser.email!,
+             role: isAdmin ? 'admin' : 'staff',
+             shop_name: 'LuxeFlow Retail',
+             custom_permissions: isAdmin ? adminPermissions : defaultPermissions,
+             status: 'active'
+           };
+           
+           await supabase.from('user_profiles').insert(newProfile);
+           setProfile({ ...newProfile, permissions: newProfile.custom_permissions } as any as UserProfile);
         }
       } catch (err) {
         console.error(err);
@@ -174,6 +205,7 @@ export default function App() {
               <Route path="/services" element={<Services />} />
               <Route path="/bookings" element={<Bookings />} />
               <Route path="/orders" element={<Orders />} />
+              <Route path="/orders/create" element={<CreateOrder />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/customers/referrers" element={<Referrers />} />
               <Route path="/customers/referred" element={<ReferredList />} />

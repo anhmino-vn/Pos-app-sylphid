@@ -41,7 +41,8 @@ import {
   Package,
   Sparkles,
   Clock,
-  Download
+  Download,
+  Save
 } from 'lucide-react';
 import { formatDate, formatCurrency, cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -152,7 +153,8 @@ export function Customers() {
   };
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  const [formData, setFormData] = useState<Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'lastPurchaseDate'> & { referredById?: string }>({
+  const [formData, setFormData] = useState<Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'lastPurchaseDate'> & { referredById?: string, code?: string }>({
+    code: '',
     name: '',
     phone: '',
     email: '',
@@ -290,8 +292,14 @@ export function Customers() {
       if (editingId) {
         const batch = writeBatch(db);
         const customerRef = doc(db, 'customers', editingId);
+        const dataToSave = { ...formData };
+        if (!dataToSave.code) dataToSave.code = null as any;
+        if (!dataToSave.referredById) dataToSave.referredById = null as any;
+        delete (dataToSave as any).inChargeStaff;
+
         batch.update(customerRef, {
-          ...formData,
+          ...dataToSave,
+          birthDate: formData.birthDate || null,
           status: formData.status || 'active',
           updatedAt: serverTimestamp()
         });
@@ -308,8 +316,14 @@ export function Customers() {
 
         await batch.commit();
       } else {
+        const dataToSave = { ...formData };
+        if (!dataToSave.code) dataToSave.code = null as any;
+        if (!dataToSave.referredById) dataToSave.referredById = null as any;
+        delete (dataToSave as any).inChargeStaff;
+
         const docRef = await addDoc(collection(db, 'customers'), {
-          ...formData,
+          ...dataToSave,
+          birthDate: formData.birthDate || null,
           status: 'active',
           totalSpend: 0,
           orderCount: 0,
@@ -332,6 +346,7 @@ export function Customers() {
 
   const resetForm = () => {
     setFormData({
+      code: '',
       name: '',
       phone: '',
       email: '',
@@ -352,6 +367,7 @@ export function Customers() {
 
   const openEdit = (customer: Customer) => {
     setFormData({
+      code: (customer as any).code || '',
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
@@ -723,7 +739,7 @@ export function Customers() {
                 </div>
 
                 <div className="flex flex-col overflow-hidden">
-                   <h3 className="text-sm font-black text-slate-900 tracking-tighter truncate italic uppercase">{customer.name}</h3>
+                   <h3 className="text-sm font-black text-slate-900 tracking-tighter truncate italic uppercase">{(customer as any).code || 'KH--'} - {customer.name}</h3>
                    <div className="flex items-center gap-2 mt-0.5">
                       <Phone className="w-3 h-3 text-emerald-500 shrink-0" />
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">{customer.phone}</span>
@@ -858,141 +874,191 @@ export function Customers() {
       {createPortal(
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center md:p-6 lg:p-8">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" />
-            <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }} className="relative w-full h-[100dvh] md:h-auto max-w-[800px] bg-white md:rounded-[32px] lg:rounded-[44px] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.3)] overflow-hidden md:max-h-[90vh] flex flex-col">
-              <div className="px-5 py-4 sm:px-8 sm:py-6 border-b border-slate-50 flex items-center justify-between shrink-0 mt-2 sm:mt-0">
-                <div className="flex items-center gap-3 sm:gap-5">
-                  <div className="w-10 h-10 sm:w-14 sm:h-14 bg-slate-900 rounded-xl sm:rounded-[20px] flex items-center justify-center text-white">
-                    <Users className="w-5 h-5 sm:w-7 sm:h-7" />
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 lg:p-8">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }} className="relative w-full max-w-[900px] bg-white rounded-[24px] sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+              
+              {/* Header */}
+              <div className="px-6 py-5 sm:px-8 sm:py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center gap-4 sm:gap-5">
+                  <div className="relative">
+                     {formData.name ? (
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-[16px] sm:rounded-[20px] shadow-lg shadow-blue-500/30 flex items-center justify-center text-white text-xl sm:text-2xl font-black uppercase tracking-tighter border-2 border-white">
+                          {formData.name.charAt(0)}
+                        </div>
+                     ) : (
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 bg-slate-200 rounded-[16px] sm:rounded-[20px] flex items-center justify-center text-slate-400 border-2 border-white shadow-sm">
+                          <Users className="w-6 h-6 sm:w-8 sm:h-8" />
+                        </div>
+                     )}
+                     <div className={cn("absolute -bottom-2 -right-2 w-6 h-6 rounded-lg border-2 border-white flex items-center justify-center shadow-sm", getTierColor(formData.tier))}>
+                       <Award className="w-3 h-3" />
+                     </div>
                   </div>
                   <div>
                     <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-tighter italic">{editingId ? 'Cập nhật hồ sơ' : 'Đăng ký thành viên'}</h2>
-                    <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] sm:tracking-[0.3em] mt-0.5 sm:mt-1">Thông tin định danh duy nhất</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Thông tin định danh & phân hạng</p>
                   </div>
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 sm:p-3 hover:bg-slate-50 rounded-xl sm:rounded-2xl transition-colors">
-                  <X className="w-5 h-5 sm:w-7 sm:h-7 text-slate-400" />
+                <button onClick={() => setIsModalOpen(false)} className="w-10 h-10 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-full flex items-center justify-center transition-all shadow-sm">
+                  <X className="w-5 h-5 text-slate-500" />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
-                <div className="overflow-y-auto custom-scrollbar flex-1 p-5 sm:p-8 space-y-5 sm:space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Họ và tên</label>
-                      <input required type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-slate-50 border-none rounded-xl sm:rounded-[20px] font-bold text-sm focus:ring-2 focus:ring-blue-500/10 placeholder:text-slate-200" placeholder="NGUYEN VAN A" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Số điện thoại</label>
-                      <input required type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50 border-none rounded-xl sm:rounded-2xl font-bold text-sm focus:ring-2 focus:ring-blue-500/10 placeholder:text-slate-200" placeholder="0XXXXXXXXX" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Email</label>
-                      <input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50 border-none rounded-xl sm:rounded-2xl font-bold text-sm focus:ring-2 focus:ring-blue-500/10 placeholder:text-slate-200" placeholder="example@mail.com" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Phân hạng (Tier)</label>
-                      <select value={formData.tier} onChange={e => setFormData({ ...formData, tier: e.target.value as any })} className="w-full px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50 border-none rounded-xl sm:rounded-2xl font-bold text-sm focus:ring-2 focus:ring-blue-500/10 appearance-none">
-                        <option value="bronze">BRONZE MEMBER</option>
-                        <option value="silver">SILVER MEMBER</option>
-                        <option value="gold">GOLD MEMBER</option>
-                        <option value="diamond">DIAMOND VIP</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Giới tính</label>
-                      <select value={formData.gender} onChange={e => setFormData({ ...formData, gender: e.target.value })} className="w-full px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50 border-none rounded-xl sm:rounded-2xl font-bold text-sm focus:ring-2 focus:ring-blue-500/10 appearance-none">
-                        <option value="">CHỌN GIỚI TÍNH</option>
-                        <option value="male">NAM</option>
-                        <option value="female">NỮ</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Ngày sinh</label>
-                      <input type="date" value={formData.birthDate} onChange={e => setFormData({ ...formData, birthDate: e.target.value })} className="w-full px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50 border-none rounded-xl sm:rounded-2xl font-bold text-sm focus:ring-2 focus:ring-blue-500/10 text-slate-900" />
-                    </div>
-                    <div className="space-y-1 relative" ref={referrerDropdownRef}>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Người giới thiệu</label>
-                      <div className="relative">
-                         <input 
-                            type="text" 
-                            placeholder="Tìm kiếm người giới thiệu..." 
-                            value={referrerSearchTerm}
-                            onChange={(e) => {
-                               setReferrerSearchTerm(e.target.value);
-                               setIsReferrerDropdownOpen(true);
-                               if (e.target.value === '') setFormData({ ...formData, referredById: '' });
-                            }}
-                            onClick={() => setIsReferrerDropdownOpen(true)}
-                            className="w-full px-4 py-3 sm:px-5 sm:py-3.5 bg-indigo-50/50 border border-indigo-100/50 rounded-xl sm:rounded-2xl font-bold text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder:text-indigo-300"
-                         />
-                         <Search className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-indigo-300" />
-                      </div>
+              <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+                <div className="overflow-y-auto custom-scrollbar p-6 sm:p-8">
+                  
+                  <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
+                     {/* Left Column: Basic Info */}
+                     <div className="flex-1 space-y-6">
+                        <div>
+                           <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-2 mb-4">
+                              <span className="w-6 h-1 rounded-full bg-blue-500"></span> Thông tin cơ bản
+                           </h3>
+                           <div className="space-y-4">
+                              <div className="group">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-blue-600 transition-colors">Mã khách hàng</label>
+                                <input type="text" value={formData.code || ''} onChange={e => setFormData({ ...formData, code: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200/60 rounded-xl font-bold text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white placeholder:text-slate-300 transition-all outline-none" placeholder="Để trống để tự động sinh (VD: KH0001)" />
+                              </div>
 
-                      {isReferrerDropdownOpen && (
-                         <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl shadow-slate-900/10 border border-slate-100 overflow-hidden z-50 max-h-64 overflow-y-auto">
-                            {filteredReferrers.length === 0 ? (
-                               <div className="p-4 text-center text-xs font-bold text-slate-400">Không tìm thấy khách hàng.</div>
-                            ) : (
-                               <ul className="py-2">
-                                  {filteredReferrers.map(c => (
-                                     <li 
-                                       key={c.id} 
-                                       onClick={() => {
-                                          setFormData({ ...formData, referredById: c.id });
-                                          setReferrerSearchTerm(`${c.name} - ${c.phone}`);
-                                          setIsReferrerDropdownOpen(false);
-                                       }}
-                                       className="px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-50 last:border-0 flex items-center gap-3"
-                                     >
-                                        <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black uppercase shrink-0">
-                                           {c.name?.charAt(0) || 'K'}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                           <div className="flex items-center justify-between gap-2">
-                                              <span className="font-bold text-slate-900 truncate">{c.name}</span>
-                                              <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full shrink-0">{c.phone}</span>
-                                           </div>
-                                        </div>
-                                     </li>
-                                  ))}
-                               </ul>
-                            )}
-                         </div>
-                      )}
-                    </div>
-                    <div className="col-span-full space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Địa chỉ thường trú</label>
-                      <textarea rows={2} value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} className="w-full px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50 border-none rounded-xl sm:rounded-2xl font-bold text-sm focus:ring-2 focus:ring-blue-500/10 placeholder:text-slate-200" placeholder="Số nhà, đường, phường/xã..." />
-                    </div>
-                    <div className="col-span-full space-y-1">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Ghi chú</label>
-                      <textarea rows={2} value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })} className="w-full px-4 py-3 sm:px-5 sm:py-3.5 bg-slate-50 border-none rounded-xl sm:rounded-2xl font-bold text-sm focus:ring-2 focus:ring-blue-500/10 placeholder:text-slate-200" placeholder="Thông tin thêm..." />
-                    </div>
-                    
-                    {!editingId && (
-                       <div className="col-span-full mt-2">
-                         <label className="flex items-center gap-3 cursor-pointer group">
-                            <div className={cn("w-5 h-5 sm:w-6 sm:h-6 rounded border-2 flex items-center justify-center transition-all", createOrderNow ? "bg-blue-600 border-blue-600" : "bg-white border-slate-300 group-hover:border-blue-500")}>
-                               {createOrderNow && <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />}
-                            </div>
-                            <input type="checkbox" className="hidden" checked={createOrderNow} onChange={(e) => setCreateOrderNow(e.target.checked)} />
-                            <span className="font-bold text-xs sm:text-sm text-slate-900 leading-none">Tạo đơn hàng ngay</span>
-                         </label>
-                       </div>
-                    )}
+                              <div className="group">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-blue-600 transition-colors">Họ và tên <span className="text-red-500">*</span></label>
+                                <input required type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200/60 rounded-xl font-bold text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white placeholder:text-slate-300 transition-all outline-none" placeholder="VD: NGUYEN VAN A" />
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                 <div className="group">
+                                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-blue-600 transition-colors">Số điện thoại <span className="text-red-500">*</span></label>
+                                   <input required type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200/60 rounded-xl font-bold text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white placeholder:text-slate-300 transition-all outline-none" placeholder="0XXXXXXXXX" />
+                                 </div>
+                                 <div className="group">
+                                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-blue-600 transition-colors">Giới tính</label>
+                                   <select value={formData.gender} onChange={e => setFormData({ ...formData, gender: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200/60 rounded-xl font-bold text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white text-slate-700 transition-all outline-none appearance-none">
+                                     <option value="">CHỌN</option>
+                                     <option value="male">NAM</option>
+                                     <option value="female">NỮ</option>
+                                   </select>
+                                 </div>
+                              </div>
+                              
+                              <div className="group">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-blue-600 transition-colors">Ngày sinh</label>
+                                <input type="date" value={formData.birthDate} onChange={e => setFormData({ ...formData, birthDate: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200/60 rounded-xl font-bold text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white text-slate-700 transition-all outline-none" />
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Right Column: Meta Info */}
+                     <div className="flex-1 space-y-6">
+                        <div>
+                           <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-2 mb-4">
+                              <span className="w-6 h-1 rounded-full bg-indigo-500"></span> Thông tin liên lạc & Bổ sung
+                           </h3>
+                           <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                 <div className="group col-span-2 sm:col-span-1">
+                                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-indigo-600 transition-colors">Phân hạng (Tier)</label>
+                                   <select value={formData.tier} onChange={e => setFormData({ ...formData, tier: e.target.value as any })} className="w-full px-5 py-3.5 bg-indigo-50/30 border border-indigo-100 rounded-xl font-bold text-sm text-indigo-900 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all outline-none appearance-none">
+                                     <option value="bronze">BRONZE MEMBER</option>
+                                     <option value="silver">SILVER MEMBER</option>
+                                     <option value="gold">GOLD MEMBER</option>
+                                     <option value="diamond">DIAMOND VIP</option>
+                                   </select>
+                                 </div>
+                                 <div className="group col-span-2 sm:col-span-1">
+                                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-indigo-600 transition-colors">Email</label>
+                                   <input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200/60 rounded-xl font-bold text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white placeholder:text-slate-300 transition-all outline-none" placeholder="example@mail.com" />
+                                 </div>
+                              </div>
+
+                              <div className="group relative" ref={referrerDropdownRef}>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-indigo-600 transition-colors">Người giới thiệu</label>
+                                <div className="relative">
+                                   <input 
+                                      type="text" 
+                                      placeholder="Tìm tên hoặc SĐT..." 
+                                      value={referrerSearchTerm}
+                                      onChange={(e) => {
+                                         setReferrerSearchTerm(e.target.value);
+                                         setIsReferrerDropdownOpen(true);
+                                         if (e.target.value === '') setFormData({ ...formData, referredById: '' });
+                                      }}
+                                      onClick={() => setIsReferrerDropdownOpen(true)}
+                                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200/60 rounded-xl font-bold text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white placeholder:text-slate-300 transition-all outline-none pr-12"
+                                   />
+                                   <Search className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                                </div>
+
+                                <AnimatePresence>
+                                   {isReferrerDropdownOpen && (
+                                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute top-full left-0 right-0 mt-2 bg-white rounded-[16px] shadow-2xl border border-slate-100 overflow-hidden z-50 max-h-60 overflow-y-auto">
+                                         {filteredReferrers.length === 0 ? (
+                                            <div className="p-6 text-center text-xs font-bold text-slate-400">Không tìm thấy khách hàng.</div>
+                                         ) : (
+                                            <ul className="py-2">
+                                               {filteredReferrers.map(c => (
+                                                  <li 
+                                                    key={c.id} 
+                                                    onClick={() => {
+                                                       setFormData({ ...formData, referredById: c.id });
+                                                       setReferrerSearchTerm(`${c.name} - ${c.phone}`);
+                                                       setIsReferrerDropdownOpen(false);
+                                                    }}
+                                                    className="px-5 py-3 hover:bg-slate-50 cursor-pointer transition-colors flex items-center gap-3 border-b border-slate-50 last:border-0"
+                                                  >
+                                                     <div className="w-10 h-10 rounded-[12px] bg-indigo-50 text-indigo-600 flex items-center justify-center font-black uppercase shrink-0 border border-indigo-100/50">
+                                                        {c.name?.charAt(0) || 'K'}
+                                                     </div>
+                                                     <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                           <span className="font-bold text-slate-900 truncate">{c.name}</span>
+                                                           <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full shrink-0">{c.phone}</span>
+                                                        </div>
+                                                     </div>
+                                                  </li>
+                                               ))}
+                                            </ul>
+                                         )}
+                                      </motion.div>
+                                   )}
+                                </AnimatePresence>
+                              </div>
+
+                              <div className="group">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1.5 block group-focus-within:text-indigo-600 transition-colors">Địa chỉ & Ghi chú</label>
+                                <textarea rows={2} value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} className="w-full px-5 py-3 bg-slate-50 border border-slate-200/60 rounded-t-xl font-bold text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white placeholder:text-slate-300 transition-all outline-none resize-none" placeholder="Địa chỉ thường trú..." />
+                                <textarea rows={2} value={formData.note} onChange={e => setFormData({ ...formData, note: e.target.value })} className="w-full px-5 py-3 bg-slate-50 border border-slate-200/60 border-t-0 rounded-b-xl font-bold text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white placeholder:text-slate-300 transition-all outline-none resize-none" placeholder="Ghi chú thêm..." />
+                              </div>
+                           </div>
+                        </div>
+                     </div>
                   </div>
+
+                  {!editingId && (
+                     <div className="mt-8 pt-6 border-t border-slate-100">
+                       <label className="flex items-center gap-4 cursor-pointer group w-fit">
+                          <div className={cn("w-12 h-6 rounded-full transition-colors relative flex items-center shadow-inner", createOrderNow ? "bg-emerald-500" : "bg-slate-200")}>
+                             <div className={cn("w-5 h-5 bg-white rounded-full shadow-sm absolute transition-all transform", createOrderNow ? "left-[26px]" : "left-0.5")} />
+                          </div>
+                          <input type="checkbox" className="hidden" checked={createOrderNow} onChange={(e) => setCreateOrderNow(e.target.checked)} />
+                          <div>
+                             <span className="font-bold text-sm text-slate-900 block">Tạo đơn hàng ngay</span>
+                             <span className="text-[10px] text-slate-400 font-medium">Hệ thống sẽ chuyển sang giao diện POS sau khi lưu</span>
+                          </div>
+                       </label>
+                     </div>
+                  )}
                 </div>
-                {/* Fixed Footer for Actions */}
-                <div className="p-4 sm:p-6 border-t border-slate-50 bg-white shrink-0 mt-auto">
-                  <div className="flex gap-3">
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors">Hủy thao tác</button>
-                    <button type="submit" disabled={loading} className="flex-[2] py-4 bg-slate-900 text-white rounded-2xl sm:rounded-3xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-slate-900/20 active:scale-95 transition-all flex items-center justify-center gap-2">
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                      {editingId ? 'Cập nhật hệ thống' : 'Ghi danh hội viên'}
-                    </button>
-                  </div>
+
+                <div className="px-6 py-5 sm:px-8 sm:py-6 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-3 shrink-0">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3.5 text-sm font-bold text-slate-500 uppercase tracking-widest hover:bg-slate-200/50 rounded-xl transition-colors">
+                    Hủy thao tác
+                  </button>
+                  <button type="submit" disabled={loading} className="px-8 py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-600/20">
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                    {editingId ? 'Lưu thay đổi' : 'Ghi danh hội viên'}
+                  </button>
                 </div>
               </form>
             </motion.div>
