@@ -4,8 +4,8 @@ import { Award, Search, Loader2, CheckSquare, Square, Download } from 'lucide-re
 import { formatCurrency, formatDate, cn } from '../../lib/utils';
 import { DateRange, DateFilter } from '../../components/DateFilter';
 import { useDateFilterStore } from '../../store/useDateFilterStore';
-import { doc, writeBatch } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { doc, writeBatch } from '../../lib/firebaseAdapter';
+import { db } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 

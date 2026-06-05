@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, Timestamp } from '../../lib/firebaseAdapter';
+import { db } from '../../lib/supabase';
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, subDays, format } from 'date-fns';
 import { Loader2, Package, Eye, X } from 'lucide-react';
-import { Order, Product } from '../../lib/firebase';
+import { Order, Product } from '../../lib/supabase';
 
 interface InventoryStats {
   id: string;

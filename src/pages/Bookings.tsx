@@ -14,8 +14,8 @@ import {
   orderBy,
   where,
   writeBatch
-} from 'firebase/firestore';
-import { db, Booking, Service, UserProfile, handleFirestoreError, OperationType } from '../lib/firebase';
+} from '../lib/firebaseAdapter';
+import { db, supabase, Booking, Service, UserProfile, handleFirestoreError, OperationType } from '../lib/supabase';
 import { PrintBookingTicket } from '../components/printing/PrintBookingTicket';
 import { printElement } from '../lib/printUtils';
 import { 
@@ -539,8 +539,7 @@ export function Bookings() {
                              setOpenDropdown(null);
                              printElement(`print-booking-${booking.id}`, '80mm');
                              const { logActivity } = await import('../lib/activityUtils');
-                             const { auth } = await import('../lib/firebase');
-                             await logActivity(auth.currentUser as any, 'In ấn', 'In phiếu dịch vụ', `In phiếu dịch vụ #${booking.id}`);
+                             await logActivity((await supabase.auth.getUser()).data.user as any, 'In ấn', 'In phiếu dịch vụ', `In phiếu dịch vụ #${booking.id}`);
                           }} className="w-full text-left px-5 py-2.5 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center gap-3"><Printer className="w-4 h-4" /> In phiếu dịch vụ</button>
                           <button onClick={(e) => { e.stopPropagation(); setOpenDropdown(null); handleEditBooking(booking); }} className="w-full text-left px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-3"><Edit2 className="w-4 h-4" /> Sửa thông tin</button>
                           <button onClick={(e) => { e.stopPropagation(); setOpenDropdown(null); updateBookingStatus(booking.id!, 'cancelled'); }} className="w-full text-left px-5 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3"><XCircle className="w-4 h-4" /> Hủy lịch hẹn</button>

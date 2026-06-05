@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import { Department, db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { collection, onSnapshot, query, setDoc, doc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { Department, db, handleFirestoreError, OperationType } from '../../lib/supabase';
+import { collection, onSnapshot, query, setDoc, doc, deleteDoc, updateDoc, serverTimestamp } from '../../lib/firebaseAdapter';
 import { Building2, Plus, Edit2, Trash2, X, Users, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';

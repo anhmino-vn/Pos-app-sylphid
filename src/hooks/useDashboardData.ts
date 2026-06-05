@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, orderBy, Timestamp } from 'firebase/firestore';
-import { db, Order, Product, Booking, handleFirestoreError, OperationType } from '../lib/firebase';
+import { collection, query, onSnapshot, orderBy, Timestamp } from '../lib/firebaseAdapter';
+import { db, Order, Product, Booking, handleFirestoreError, OperationType } from '../lib/supabase';
 import { DateRange } from '../store/useDateFilterStore';
 import { startOfDay } from 'date-fns';
 

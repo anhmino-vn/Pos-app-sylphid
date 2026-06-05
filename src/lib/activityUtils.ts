@@ -1,5 +1,5 @@
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebase';
+import { collection, addDoc, serverTimestamp } from '../lib/firebaseAdapter';
+import { db } from './supabase';
 
 export async function logActivity(
   user: { uid: string; email: string; name?: string } | null,

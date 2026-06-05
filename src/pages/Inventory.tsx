@@ -9,8 +9,8 @@ import {
   doc, 
   serverTimestamp,
   writeBatch
-} from 'firebase/firestore';
-import { db, Product, InventoryLog, handleFirestoreError, OperationType } from '../lib/firebase';
+} from '../lib/firebaseAdapter';
+import { db, Product, InventoryLog, handleFirestoreError, OperationType } from '../lib/supabase';
 import { 
   Package, 
   Plus, 

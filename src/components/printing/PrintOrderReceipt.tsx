@@ -1,6 +1,6 @@
 import React from 'react';
 import QRCode from 'react-qr-code';
-import { Order } from '../../lib/firebase';
+import { Order } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
 import { Sparkles } from 'lucide-react';
 import { useSettings } from '../../lib/settings';

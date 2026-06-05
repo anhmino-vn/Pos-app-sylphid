@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Printer, FileEdit, Download, FileBox } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import { PrintConfigModal, PrintConfig } from './PrintConfigModal';
-import { Guide } from '../../lib/firebase';
+import { Guide } from '../../lib/supabase';
 
 interface DocumentPreviewDialogProps {
   guide: Guide | null;

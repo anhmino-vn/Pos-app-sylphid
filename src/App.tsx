@@ -6,9 +6,8 @@ import {
   Navigate, 
   useLocation 
 } from 'react-router-dom';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { auth, db, UserProfile } from './lib/firebase';
+import { User } from '@supabase/supabase-js';
+import { supabase, UserProfile } from './lib/supabase';
 import { motion } from 'motion/react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
@@ -48,54 +47,97 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsubscribeProfile: (() => void) | null = null;
+    let profileSubscription: any = null;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (authUser) => {
-      setUser(authUser);
-      
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-        unsubscribeProfile = null;
-      }
+    const fetchProfile = async (authUser: User) => {
+      try {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', authUser.id)
+          .single();
 
-      if (authUser) {
-        unsubscribeProfile = onSnapshot(
-          doc(db, 'users', authUser.uid), 
-          async (docSnap) => {
-            if (docSnap.exists()) {
-              const userData = docSnap.data() as UserProfile;
-              let finalPermissions = userData.permissions;
-              
-              if (userData.roleId && !userData.permissions) { // Use role perms if custom user permissions not populated
-                 try {
-                    const { getDoc } = await import('firebase/firestore');
-                    const roleRef = await getDoc(doc(db, 'roles', userData.roleId));
-                    if (roleRef.exists()) {
-                       finalPermissions = roleRef.data().permissions;
-                    }
-                 } catch (e) { console.error("Error fetching role:", e) }
+        if (error && error.code !== 'PGRST116') { // Ignore row not found temporarily
+          console.error("Profile fetch error:", error);
+        }
+
+        if (data) {
+           let finalPermissions = data.custom_permissions || data.permissions;
+           
+           if (data.role_id && !finalPermissions) {
+              const { data: roleData } = await supabase.from('roles').select('permissions').eq('id', data.role_id).single();
+              if (roleData) {
+                 finalPermissions = roleData.permissions;
               }
-              
-              setProfile({ ...userData, permissions: finalPermissions });
-            } else {
-              setProfile(null);
-            }
-            setLoading(false);
-          },
-          (error) => {
-            console.error("Profile sync error:", error);
-            setLoading(false);
-          }
-        );
+           }
+           
+           setProfile({ ...data, permissions: finalPermissions } as UserProfile);
+        } else {
+           setProfile(null);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const setupAuth = async () => {
+       const { data: { session } } = await supabase.auth.getSession();
+       if (session?.user) {
+          setUser(session.user);
+          await fetchProfile(session.user);
+          
+          // Setup real-time profile listener
+          profileSubscription = supabase
+            .channel('public:user_profiles')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'user_profiles', filter: `id=eq.${session.user.id}` }, (payload) => {
+               if (payload.new) {
+                 setProfile(prev => ({ ...prev, ...(payload.new as any) }));
+               }
+            })
+            .subscribe();
+            
+       } else {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+       }
+    };
+    
+    setupAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        await fetchProfile(session.user);
+        
+        if (!profileSubscription) {
+            profileSubscription = supabase
+            .channel('public:user_profiles')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'user_profiles', filter: `id=eq.${session.user.id}` }, (payload) => {
+               if (payload.new) {
+                 setProfile(prev => ({ ...prev, ...(payload.new as any) }));
+               }
+            })
+            .subscribe();
+        }
       } else {
+        setUser(null);
         setProfile(null);
+        if (profileSubscription) {
+           supabase.removeChannel(profileSubscription);
+           profileSubscription = null;
+        }
         setLoading(false);
       }
     });
 
     return () => {
-      unsubscribeAuth();
-      if (unsubscribeProfile) unsubscribeProfile();
+      subscription.unsubscribe();
+      if (profileSubscription) {
+        supabase.removeChannel(profileSubscription);
+      }
     };
   }, []);
 

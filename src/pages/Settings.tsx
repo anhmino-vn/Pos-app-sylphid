@@ -22,9 +22,9 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { doc, getDoc, setDoc, onSnapshot } from '../lib/firebaseAdapter';
+import { ref, uploadBytesResumable, getDownloadURL } from '../lib/firebaseAdapter';
+import { db, storage } from '../lib/supabase';
 import { useAuth } from '../App';
 import { cn } from '../lib/utils';
 import { formatCurrency } from '../lib/utils';

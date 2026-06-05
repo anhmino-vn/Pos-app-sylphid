@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, Timestamp } from '../../lib/firebaseAdapter';
+import { db } from '../../lib/supabase';
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, subDays, format } from 'date-fns';
 import { Loader2, Sparkles, Users, Eye, X } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import { Order } from '../../lib/firebase';
+import { Order } from '../../lib/supabase';
 
 interface ServiceStats {
   id: string;

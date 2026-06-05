@@ -1,6 +1,5 @@
 import React from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
-import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import {
   LayoutDashboard,
   Package,
@@ -20,22 +19,10 @@ import {
   Warehouse,
   BarChart2,
 } from "lucide-react";
-import { signOut } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { supabase, handleSupabaseError, OperationType } from '../lib/supabase';
 import { cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../App";
-
-import {
-  collection,
-  query,
-  orderBy,
-  limit,
-  onSnapshot,
-  where,
-} from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-
 import { Toaster } from "react-hot-toast";
 
 export function Layout() {
@@ -47,7 +34,7 @@ export function Layout() {
   const [notificationLimit, setNotificationLimit] = React.useState(5);
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
 
   React.useEffect(() => {
     if (profile?.status === "locked") {
@@ -57,86 +44,62 @@ export function Layout() {
   }, [profile?.status]);
 
   React.useEffect(() => {
-    // Listen for low stock (from products) and recent activity (from logs/orders)
-    const qLogs = query(
-      collection(db, "inventoryLogs"),
-      orderBy("createdAt", "desc"),
-      limit(5),
-    );
-    const unsubscribeLogs = onSnapshot(
-      qLogs,
-      (snapshot) => {
-        const logs = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          type: "inventory",
-          title: "Biến động kho",
-          message: `${doc.data().productName}: ${doc.data().type === "in" ? "+" : ""}${doc.data().quantity}`,
-          time: doc.data().createdAt?.toDate(),
-        }));
-        setNotifications((prev) =>
-          [...logs, ...prev.filter((n) => n.type !== "inventory")].slice(0, 10),
-        );
-      },
-      (error) => {
-        handleFirestoreError(
-          error,
-          OperationType.LIST,
-          "inventoryLogs-notifications",
-        );
-      },
-    );
+    // Fetch initial notifications
+    const fetchNotifications = async () => {
+      try {
+        const [logsRes, ordersRes, guidesRes] = await Promise.all([
+          supabase.from("inventory_logs").select("*").order("created_at", { ascending: false }).limit(5),
+          supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(5),
+          supabase.from("guides").select("*").order("created_at", { ascending: false }).limit(3),
+        ]);
 
-    const qOrders = query(
-      collection(db, "orders"),
-      orderBy("createdAt", "desc"),
-      limit(5),
-    );
-    const unsubscribeOrders = onSnapshot(
-      qOrders,
-      (snapshot) => {
-        const orders = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          type: "order",
-          title: "Đơn hàng mới",
-          message: `#${doc.id.slice(-6)} - ${doc.data().customerName || "Khách lẻ"}`,
-          time: doc.data().createdAt?.toDate(),
-        }));
-        setNotifications((prev) =>
-          [...orders, ...prev.filter((n) => n.type !== "order")].slice(0, 10),
-        );
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, "orders-notifications");
-      },
-    );
+        let initialNotifs: any[] = [];
+        
+        if (logsRes.data) {
+           initialNotifs.push(...logsRes.data.map(doc => ({
+             id: doc.id, type: "inventory", title: "Biến động kho", message: `${doc.product_name}: ${doc.type === "in" ? "+" : ""}${doc.quantity}`, time: new Date(doc.created_at)
+           })));
+        }
+        if (ordersRes.data) {
+           initialNotifs.push(...ordersRes.data.map(doc => ({
+             id: doc.id, type: "order", title: "Đơn hàng mới", message: `#${doc.id.slice(-6)} - ${doc.customer_name || "Khách lẻ"}`, time: new Date(doc.created_at)
+           })));
+        }
+        if (guidesRes.data) {
+           initialNotifs.push(...guidesRes.data.map(doc => ({
+             id: doc.id, type: "guide", title: "Tài liệu mới", message: doc.title, time: new Date(doc.created_at)
+           })));
+        }
 
-    const qGuides = query(
-      collection(db, "guides"),
-      orderBy("createdAt", "desc"),
-      limit(3),
-    );
-    const unsubscribeGuides = onSnapshot(
-      qGuides,
-      (snapshot) => {
-        const guides = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          type: "guide",
-          title: "Tài liệu mới",
-          message: doc.data().title,
-          time: doc.data().createdAt?.toDate(),
-        }));
-        setNotifications((prev) =>
-          [...guides, ...prev.filter((n) => n.type !== "guide")].slice(0, 10),
-        );
-      },
-      (error) =>
-        console.log("Guides notifications error, likely missing index", error),
-    );
+        initialNotifs.sort((a, b) => b.time.getTime() - a.time.getTime());
+        setNotifications(initialNotifs.slice(0, 10));
+      } catch (e) {
+        console.error("Error fetching notifications", e);
+      }
+    };
+
+    fetchNotifications();
+
+    const channel = supabase.channel('notifications')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inventory_logs' }, payload => {
+        setNotifications(prev => [{
+           id: payload.new.id, type: "inventory", title: "Biến động kho", message: `${payload.new.product_name}: ${payload.new.type === "in" ? "+" : ""}${payload.new.quantity}`, time: new Date(payload.new.created_at)
+        }, ...prev].slice(0, 10));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
+        setNotifications(prev => [{
+           id: payload.new.id, type: "order", title: "Đơn hàng mới", message: `#${payload.new.id.slice(-6)} - ${payload.new.customer_name || "Khách lẻ"}`, time: new Date(payload.new.created_at)
+        }, ...prev].slice(0, 10));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guides' }, payload => {
+        setNotifications(prev => [{
+           id: payload.new.id, type: "guide", title: "Tài liệu mới", message: payload.new.title, time: new Date(payload.new.created_at)
+        }, ...prev].slice(0, 10));
+      })
+      .subscribe();
 
     return () => {
-      unsubscribeLogs();
-      unsubscribeOrders();
-      unsubscribeGuides();
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -144,13 +107,13 @@ export function Layout() {
     try {
       const { logActivity } = await import("../lib/activityUtils");
       await logActivity(
-        auth.currentUser as any,
+        user as any,
         "Hệ thống",
         "Đăng xuất",
         `Đã đăng xuất`,
       );
     } catch (e) {}
-    await signOut(auth);
+    await supabase.auth.signOut();
     navigate("/login");
   };
 
@@ -614,7 +577,7 @@ export function Layout() {
               </div>
               <div className="w-10 h-10 rounded-xl bg-slate-200 overflow-hidden ring-2 ring-white shadow-sm">
                 <img
-                  src={`https://ui-avatars.com/api/?name=${auth.currentUser?.email}&background=1e3a8a&color=fff`}
+                  src={`https://ui-avatars.com/api/?name=${user?.email}&background=1e3a8a&color=fff`}
                   alt="avatar"
                   className="w-full h-full object-cover"
                 />

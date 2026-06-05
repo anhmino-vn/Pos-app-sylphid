@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { collection, onSnapshot, query, doc, getDoc } from "firebase/firestore";
-import { db, Customer, Order } from "./firebase";
+import { collection, onSnapshot, query, doc, getDoc } from '../lib/firebaseAdapter';
+import { db, Customer, Order } from './supabase';
 
 export interface ReferralSettings {
   commissionMethod: "PER_ORDER" | "TOTAL_REVENUE";

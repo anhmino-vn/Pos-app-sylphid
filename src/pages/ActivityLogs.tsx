@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
-import { db, ActivityLog, handleFirestoreError, OperationType } from '../lib/firebase';
+import { collection, query, orderBy, onSnapshot, limit } from '../lib/firebaseAdapter';
+import { db, ActivityLog, handleFirestoreError, OperationType } from '../lib/supabase';
 import { Search, Loader2 } from 'lucide-react';
 import { formatDate } from '../lib/utils';
 import { motion } from 'motion/react';

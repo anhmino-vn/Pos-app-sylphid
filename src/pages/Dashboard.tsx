@@ -32,7 +32,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { Order } from '../lib/firebase';
+import { Order } from '../lib/supabase';
 import { formatCurrency, cn, formatDate } from '../lib/utils';
 import { OrderDetailsModal } from '../components/OrderDetailsModal';
 import { useNavigate } from 'react-router-dom';

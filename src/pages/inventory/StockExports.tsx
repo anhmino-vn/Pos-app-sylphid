@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { db, Product, handleFirestoreError, OperationType, StockExportItem, StockExport } from '../../lib/firebase';
+import { collection, query, orderBy, onSnapshot, doc, serverTimestamp, writeBatch } from '../../lib/firebaseAdapter';
+import { db, Product, handleFirestoreError, OperationType, StockExportItem, StockExport } from '../../lib/supabase';
 import { Plus, Search, LogOut, Trash2, X, CheckCircle2, Loader2, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../App';

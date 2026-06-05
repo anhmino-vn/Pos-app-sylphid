@@ -1,6 +1,6 @@
 import React from 'react';
 import QRCode from 'react-qr-code';
-import { Booking } from '../../lib/firebase';
+import { Booking } from '../../lib/supabase';
 import { formatCurrency, formatDate } from '../../lib/utils';
 
 interface PrintBookingTicketProps {

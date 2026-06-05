@@ -15,8 +15,8 @@ import {
   getDocs,
   deleteDoc,
   writeBatch
-} from 'firebase/firestore';
-import { db, Customer, Order } from '../lib/firebase';
+} from '../lib/firebaseAdapter';
+import { db, Customer, Order } from '../lib/supabase';
 import { 
   Users, 
   Search, 
@@ -417,7 +417,7 @@ export function Customers() {
           if (statFilter === 'old') return !isCreatedInRange && hasOrderInRange;
           if (statFilter === 'unpaid') {
               const orders = getFilteredOrders(c.id);
-              return orders.some((o: Order) => typeof o.totalAmount === 'number' && o.totalAmount > (o.amountPaid || 0));
+              return orders.some((o: Order) => typeof o.totalAmount === 'number' && o.totalAmount > (o.amountGiven || 0));
           }
        }
        

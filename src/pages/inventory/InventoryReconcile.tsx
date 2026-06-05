@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
-import { db, Product, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { collection, query, orderBy, onSnapshot, writeBatch, doc, serverTimestamp } from '../../lib/firebaseAdapter';
+import { db, Product, handleFirestoreError, OperationType } from '../../lib/supabase';
 import { Search, Save, AlertTriangle, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../App';

@@ -7,8 +7,8 @@ import { DateRange, DateFilter } from '../../components/DateFilter';
 import { useDateFilterStore } from '../../store/useDateFilterStore';
 import * as XLSX from 'xlsx';
 import { motion, AnimatePresence } from 'motion/react';
-import { db } from '../../lib/firebase';
-import { doc, setDoc, writeBatch } from 'firebase/firestore';
+import { db } from '../../lib/supabase';
+import { doc, setDoc, writeBatch } from '../../lib/firebaseAdapter';
 import toast from 'react-hot-toast';
 
 export function Referrers() {

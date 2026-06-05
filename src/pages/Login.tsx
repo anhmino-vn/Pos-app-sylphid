@@ -1,10 +1,9 @@
 import React from 'react';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, googleProvider, db, UserPermissions } from '../lib/firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase, UserPermissions } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { LogIn } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
 
 export function Login() {
   const navigate = useNavigate();
@@ -18,17 +17,13 @@ export function Login() {
     setLoading(true);
     setError('');
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      await setupUserDoc(user);
+      const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+      if (error) throw error;
+      // Note: setupUserDoc is not called here because OAuth redirects. 
+      // It will be handled in App.tsx or automatically upon return.
+      // But for complete safety, App.tsx now handles profile creation/fetching.
     } catch (err: any) {
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Cửa sổ đăng nhập đã bị đóng. Vui lòng thử lại.');
-      } else if (err.code === 'auth/cancelled-by-user') {
-        setError('Đăng nhập đã bị hủy.');
-      } else {
-        setError('Đăng nhập thất bại. Vui lòng kiểm tra kết nối và thử lại.');
-      }
+      setError('Đăng nhập thất bại. Vui lòng kiểm tra kết nối và thử lại.');
       console.error(err);
       setLoading(false);
     }
@@ -43,76 +38,63 @@ export function Login() {
     setLoading(true);
     setError('');
     try {
-      const { signInWithEmailAndPassword } = await import('firebase/auth');
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      await setupUserDoc(result.user);
-    } catch (err: any) {
-      if (err.code === 'auth/operation-not-allowed') {
-        setError('Đăng nhập bằng Email chưa được bật. Vui lòng liên hệ Admin cấu hình Firebase Console.');
-      } else {
-        setError('Email hoặc mật khẩu không chính xác.');
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (data.user) {
+        await setupUserDoc(data.user);
       }
+    } catch (err: any) {
+      setError('Email hoặc mật khẩu không chính xác.');
       console.error(err);
       setLoading(false);
     }
   };
 
-  const setupUserDoc = async (user: import('firebase/auth').User) => {
+  const setupUserDoc = async (user: User) => {
     try {
-      // Check if user profile exists, if not create as staff by default (or admin if email matches)
-      const docRef = doc(db, 'users', user.uid);
-      const docSnap = await getDoc(docRef);
+      const { data: profile } = await supabase.from('user_profiles').select('*').eq('id', user.id).single();
 
-      if (!docSnap.exists()) {
-        const isAdmin = user.email === 'anhmino.it@gmail.com' || user.email === 'ngocanhvux4@gmail.com';
-        
-        const defaultPermissions: UserPermissions = {
-          products: { view: true, add: isAdmin, edit: isAdmin, delete: isAdmin },
-          orders: { view: true, add: true, edit: isAdmin, delete: isAdmin },
-          stock: { view: true, import: isAdmin, export: isAdmin },
-          customers: { view: true, edit: true },
-          reports: { view: isAdmin }
-        };
+      const isAdmin = user.email === 'anhmino.it@gmail.com' || user.email === 'ngocanhvux4@gmail.com';
+      
+      const adminPermissions: UserPermissions = {
+        products: { view: true, add: true, edit: true, delete: true },
+        orders: { view: true, add: true, edit: true, delete: true },
+        stock: { view: true, import: true, export: true },
+        customers: { view: true, edit: true },
+        reports: { view: true },
+        services: { view: true, add: true, edit: true, delete: true },
+        documents: { view: true, add: true, edit: true, delete: true, print: true },
+        staff: { view: true, add: true, edit: true }
+      };
 
-        await setDoc(docRef, {
-          uid: user.uid,
-          email: user.email,
+      const defaultPermissions: UserPermissions = {
+        products: { view: true, add: isAdmin, edit: isAdmin, delete: isAdmin },
+        orders: { view: true, add: true, edit: isAdmin, delete: isAdmin },
+        stock: { view: true, import: isAdmin, export: isAdmin },
+        customers: { view: true, edit: true },
+        reports: { view: isAdmin }
+      };
+
+      if (!profile) {
+        await supabase.from('user_profiles').insert({
+          id: user.id,
+          email: user.email!,
           role: isAdmin ? 'admin' : 'staff',
-          shopName: 'LuxeFlow Retail',
-          permissions: defaultPermissions,
-          status: 'active',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          shop_name: 'LuxeFlow Retail',
+          custom_permissions: isAdmin ? adminPermissions : defaultPermissions,
+          status: 'active'
         });
       } else {
-        // Ensure admin email always has admin role and full permissions
-        if (user.email === 'anhmino.it@gmail.com' || user.email === 'ngocanhvux4@gmail.com') {
-          const profile = docSnap.data();
-          if (profile.role !== 'admin' || !profile.permissions?.reports?.view) {
-            await setDoc(docRef, { 
-              role: 'admin',
-              permissions: {
-                products: { view: true, add: true, edit: true, delete: true },
-                orders: { view: true, add: true, edit: true, delete: true },
-                stock: { view: true, import: true, export: true },
-                customers: { view: true, edit: true },
-                reports: { view: true },
-                services: { view: true, add: true, edit: true, delete: true },
-                documents: { view: true, add: true, edit: true, delete: true, print: true },
-                staff: { view: true, add: true, edit: true }
-              }
-            }, { merge: true });
-          }
-        } else {
-          // check if locked
-          const profile = docSnap.data();
-          if (profile.status === 'locked') {
-             const { signOut } = await import('firebase/auth');
-             await signOut(auth);
-             setError('Tài khoản của bạn đã bị khóa.');
-             setLoading(false);
-             return;
-          }
+        if (isAdmin && (profile.role !== 'admin' || !profile.custom_permissions?.reports?.view)) {
+          await supabase.from('user_profiles').update({
+            role: 'admin',
+            custom_permissions: adminPermissions
+          }).eq('id', user.id);
+        } else if (profile.status === 'locked') {
+           await supabase.auth.signOut();
+           setError('Tài khoản của bạn đã bị khóa.');
+           setLoading(false);
+           return;
         }
       }
       

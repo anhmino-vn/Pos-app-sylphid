@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, Timestamp, orderBy } from '../../lib/firebaseAdapter';
+import { db } from '../../lib/supabase';
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, subDays, format } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import { Order } from '../../lib/firebase';
+import { Order } from '../../lib/supabase';
 
 export function RevenueReport({ dateRange }: { dateRange: string }) {
   const [loading, setLoading] = useState(true);

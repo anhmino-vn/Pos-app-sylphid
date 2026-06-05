@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Eye, FileEdit, Printer, Trash2, MoreHorizontal } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { Guide } from '../../lib/firebase';
+import { Guide } from '../../lib/supabase';
 
 interface DocumentActionsProps {
   guide: Guide;

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { collection, query, where, getDocs, Timestamp } from '../../lib/firebaseAdapter';
+import { db } from '../../lib/supabase';
 import { startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, subDays, format } from 'date-fns';
 import { Loader2, ShoppingCart, UserCheck, UserPlus, HelpCircle } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
-import { Order, Customer } from '../../lib/firebase';
+import { Order, Customer } from '../../lib/supabase';
 
 export function OrdersReport({ dateRange }: { dateRange: string }) {
   const [loading, setLoading] = useState(true);

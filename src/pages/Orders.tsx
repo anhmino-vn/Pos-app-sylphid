@@ -16,8 +16,8 @@ import {
   updateDoc,
   deleteDoc,
   where
-} from 'firebase/firestore';
-import { db, Order, Product, Service, Customer } from '../lib/firebase';
+} from '../lib/firebaseAdapter';
+import { db, supabase, Order, Product, Service, Customer } from '../lib/supabase';
 import { PrintOrderReceipt } from '../components/printing/PrintOrderReceipt';
 import { exportPdf, exportWord, exportExcelBulk, printElement } from '../lib/printUtils';
 import { 
@@ -1840,8 +1840,7 @@ export function Orders() {
                   <button onClick={async () => {
                      printElement('print-order-receipt-thermal', '80mm');
                      const { logActivity } = await import('../lib/activityUtils');
-                     const { auth } = await import('../lib/firebase');
-                     await logActivity(auth.currentUser as any, 'In ấn', 'In Bill', `In hóa đơn #${selectedOrder.id}`);
+                     await logActivity((await supabase.auth.getUser()).data.user as any, 'In ấn', 'In Bill', `In hóa đơn #${selectedOrder.id}`);
                   }} className="p-3 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-2xl transition-colors">
                     <Printer className="w-5 h-5" />
                   </button>
@@ -2095,8 +2094,8 @@ export function Orders() {
                                     setOpenDropdownId(null);
                                     exportPdf('print-order-receipt', `HoaDon_${selectedOrder.id}.pdf`);
                                     const { logActivity } = await import('../lib/activityUtils');
-                                    const { auth } = await import('../lib/firebase');
-                                    await logActivity(auth.currentUser as any, 'In ấn', 'Xuất PDF', `Xuất PDF hóa đơn #${selectedOrder.id}`);
+                                    const { supabase } = await import('../lib/supabase');
+                                    await logActivity((await supabase.auth.getUser()).data.user as any, 'In ấn', 'Xuất PDF', `Xuất PDF hóa đơn #${selectedOrder.id}`);
                                  }} className="px-4 py-3 text-left hover:bg-rose-50 text-rose-600 text-[10px] md:text-xs font-bold rounded-xl transition-colors flex items-center gap-2"><FileText className="w-4 h-4"/> Xuất File PDF</button>
 
                                  <button onClick={() => {
@@ -2128,16 +2127,16 @@ export function Orders() {
                                     setOpenDropdownId(null);
                                     printElement('print-order-receipt', 'A4');
                                     const { logActivity } = await import('../lib/activityUtils');
-                                    const { auth } = await import('../lib/firebase');
-                                    await logActivity(auth.currentUser as any, 'In ấn', 'In hóa đơn A4', `In hóa đơn A4 #${selectedOrder.id}`);
+                                    const { supabase } = await import('../lib/supabase');
+                                    await logActivity((await supabase.auth.getUser()).data.user as any, 'In ấn', 'In hóa đơn A4', `In hóa đơn A4 #${selectedOrder.id}`);
                                  }} className="px-4 py-3 text-left hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-colors">In A4</button>
                                  
                                  <button onClick={async () => {
                                     setOpenDropdownId(null);
                                     printElement('print-order-receipt', 'A5');
                                     const { logActivity } = await import('../lib/activityUtils');
-                                    const { auth } = await import('../lib/firebase');
-                                    await logActivity(auth.currentUser as any, 'In ấn', 'In hóa đơn A5', `In hóa đơn A5 #${selectedOrder.id}`);
+                                    const { supabase } = await import('../lib/supabase');
+                                    await logActivity((await supabase.auth.getUser()).data.user as any, 'In ấn', 'In hóa đơn A5', `In hóa đơn A5 #${selectedOrder.id}`);
                                  }} className="px-4 py-3 text-left hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-colors">In A5</button>
 
                                  <button onClick={() => {

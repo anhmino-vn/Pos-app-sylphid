@@ -14,8 +14,8 @@ import {
   orderBy,
   where,
   getDocs,
-} from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+} from '../lib/firebaseAdapter';
+import { ref, uploadBytesResumable, getDownloadURL } from '../lib/firebaseAdapter';
 import {
   db,
   Service,
@@ -23,7 +23,7 @@ import {
   handleFirestoreError,
   OperationType,
   storage,
-} from "../lib/firebase";
+} from '../lib/supabase';
 import {
   Plus,
   Search,

@@ -7,8 +7,8 @@ import {
   getDocs,
   Timestamp,
   orderBy,
-} from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../../lib/firebase";
+} from '../../lib/firebaseAdapter';
+import { db, handleFirestoreError, OperationType } from '../../lib/supabase';
 import {
   LineChart,
   Line,

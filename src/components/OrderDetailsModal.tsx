@@ -11,7 +11,7 @@ import {
   Package,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { Order } from "../lib/firebase";
+import { Order } from '../lib/supabase';
 import {
   formatCurrency,
   formatDate,

@@ -12,9 +12,9 @@ import {
   deleteDoc, 
   doc, 
   serverTimestamp 
-} from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { db, storage, Guide, GuideCategory, handleFirestoreError, OperationType } from '../lib/firebase';
+} from '../lib/firebaseAdapter';
+import { ref, uploadBytesResumable, getDownloadURL } from '../lib/firebaseAdapter';
+import { db, storage, Guide, GuideCategory, handleFirestoreError, OperationType } from '../lib/supabase';
 import { useAuth } from '../App';
 import { 
   BookOpen, 

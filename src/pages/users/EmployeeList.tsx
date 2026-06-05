@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import { UserProfile, db, handleFirestoreError, OperationType, Department, Role, auth } from '../../lib/firebase';
-import { collection, onSnapshot, query, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, getDocs, where } from 'firebase/firestore';
+import { UserProfile, db, handleFirestoreError, OperationType, Department, Role, supabase } from '../../lib/supabase';
+import { collection, onSnapshot, query, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, getDocs, where } from '../../lib/firebaseAdapter';
 import { Users as UsersIcon, Plus, Edit2, Trash2, X, Loader2, CheckCircle2, ShieldCheck, Mail, Phone, Calendar, Building2, UserCog, AlertCircle, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatDate } from '../../lib/utils';
@@ -88,10 +88,10 @@ export function EmployeeList() {
          });
       } else {
          if (!email || !password) throw new Error("Vui lòng nhập Email và Mật khẩu!");
-         const { createStaffAccount } = await import('../../lib/firebase');
+         const { createStaffAccount } = await import('../../lib/supabase');
          const newUser = await createStaffAccount(email, password);
          
-         await setDoc(doc(db, 'users', newUser.uid), {
+         await setDoc(doc(db, 'users', newUser.id), {
             email, name, phone, employeeCode, departmentId, roleId, position, workStatus,
             role: 'staff',
             shopName: 'HQ Spa',
@@ -162,7 +162,7 @@ export function EmployeeList() {
                 await deleteDoc(doc(db, 'users', user.uid));
                 deleted++;
              }
-             await logActivity(auth.currentUser as any, 'Nhân sự', 'Xóa/Khóa Hàng Loạt', `Đơn vị: user ${user.email}`);
+             await logActivity((await supabase.auth.getUser()).data.user as any, 'Nhân sự', 'Xóa/Khóa Hàng Loạt', `Đơn vị: user ${user.email}`);
           }
           toast.success(`Đã xóa ${deleted} và khóa ${deactivated} nhân sự`);
           setSelectedIds([]);
@@ -179,25 +179,24 @@ export function EmployeeList() {
 
     try {
       // Check if employee has data
-      const bSnap = await getDocs(query(collection(db, 'bookings'), where('staffId', '==', user.uid)));
+      const bSnap = await getDocs(query(collection(db, 'bookings'), where('staffId', '==', user.id)));
       const lSnap = await getDocs(query(collection(db, 'activity_logs'), where('userEmail', '==', user.email)));
       
       const hasData = !bSnap.empty || !lSnap.empty;
 
       if (hasData) {
-         await updateDoc(doc(db, 'users', user.uid), {
+         await updateDoc(doc(db, 'users', user.id), {
            status: 'locked',
            updatedAt: serverTimestamp()
          });
          toast.success('Nhân sự đã có dữ liệu giao dịch/lịch sử trên hệ thống. Đã chuyển sang trạng thái "Khóa" thay vì xóa cứng.');
       } else {
-         await deleteDoc(doc(db, 'users', user.uid));
+         await deleteDoc(doc(db, 'users', user.id));
          toast.success('Xóa nhân sự thành công!');
       }
 
       const { logActivity } = await import('../../lib/activityUtils');
-      const { auth } = await import('../../lib/firebase');
-      await logActivity(auth.currentUser as any, 'Nhân sự', 'Xóa', `Đã xóa/khóa tài khoản user ${user.email}`);
+      await logActivity((await supabase.auth.getUser()).data.user as any, 'Nhân sự', 'Xóa', `Đã xóa/khóa tài khoản user ${user.email}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'users');
     } finally {
