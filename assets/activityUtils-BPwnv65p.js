@@ -1,0 +1,1 @@
+import{a as r,c,d as l,s as m}from"./index-CwW6ft3a.js";async function d(a,t,i,e){if(a)try{await r(c(l,"activity_logs"),{userId:a.uid,userEmail:a.email,userName:a.name||a.email,module:t,action:i,details:e,createdAt:m()})}catch(o){console.error("Failed to log activity:",o)}}export{d as logActivity};

@@ -45,7 +45,7 @@ async function startServer() {
       res.sendFile(import_path.default.join(distPath, "index.html"));
     });
   }
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
