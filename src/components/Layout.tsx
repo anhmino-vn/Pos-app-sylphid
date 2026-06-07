@@ -1,5 +1,5 @@
-import React from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useMemo, useRef } from "react";
+import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Package,
@@ -15,657 +15,605 @@ import {
   Box,
   Sparkles,
   Calendar,
-  BookOpen,
   Warehouse,
   BarChart2,
   ChevronDown,
+  ChevronRight,
   Plus,
   Activity,
-  Gift
+  DollarSign,
+  CreditCard,
+  HeartPulse,
+  Tags,
+  ChevronLeft,
+  Moon,
+  Sun,
+  Monitor,
+  Star,
+  Clock
 } from "lucide-react";
-import { supabase, handleSupabaseError, OperationType } from '../lib/supabase';
+import { supabase, handleSupabaseError } from '../lib/supabase';
 import { cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../App";
 import { Toaster } from "react-hot-toast";
 
 export function Layout() {
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(
-    () => window.innerWidth >= 768,
-  );
-  const [isNotificationsOpen, setIsNotificationsOpen] = React.useState(false);
-  const [isCreateMenuOpen, setIsCreateMenuOpen] = React.useState(false);
-  const [notificationLimit, setNotificationLimit] = React.useState(5);
-  const [notifications, setNotifications] = React.useState<any[]>([]);
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, profile } = useAuth();
 
-  React.useEffect(() => {
-    if (profile?.status === "locked") {
-      alert("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.");
-      handleLogout();
+  // Settings & States
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sidebarOpen");
+      if (saved !== null) return JSON.parse(saved);
+      return window.innerWidth >= 1400;
     }
-  }, [profile?.status]);
+    return true;
+  });
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('light');
+  const [menuSearchQuery, setMenuSearchQuery] = useState("");
+  
+  // Realtime Badges
+  const [badges, setBadges] = useState<{ orders: number; customers: number }>({ orders: 0, customers: 0 });
 
-  React.useEffect(() => {
-    // Fetch initial notifications
-    const fetchNotifications = async () => {
+  // Notifications
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  // Expanded Submenus
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem("expandedMenus");
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // Favorites & Recents
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    const saved = localStorage.getItem("favorites");
+    return saved ? JSON.parse(saved) : ['/orders/create', '/customers'];
+  });
+  const [recents, setRecents] = useState<{path: string, name: string}[]>([]);
+
+  // Recent path tracking moved below allNavItems declaration
+
+  // Save Settings
+  useEffect(() => {
+    localStorage.setItem("sidebarOpen", JSON.stringify(isSidebarOpen));
+  }, [isSidebarOpen]);
+
+  useEffect(() => {
+    localStorage.setItem("expandedMenus", JSON.stringify(expandedMenus));
+  }, [expandedMenus]);
+
+  useEffect(() => {
+    localStorage.setItem("favorites", JSON.stringify(favorites));
+  }, [favorites]);
+
+  // Fetch Badges
+  useEffect(() => {
+    const fetchCounts = async () => {
       try {
-        const [logsRes, ordersRes, guidesRes] = await Promise.all([
-          supabase.from("inventory_logs").select("*").order("created_at", { ascending: false }).limit(5),
-          supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(5),
-          supabase.from("guides").select("*").order("created_at", { ascending: false }).limit(3),
-        ]);
-
-        let initialNotifs: any[] = [];
-        
-        if (logsRes.data) {
-           initialNotifs.push(...logsRes.data.map(doc => ({
-             id: doc.id, type: "inventory", title: "Biến động kho", message: `${doc.product_name}: ${doc.type === "in" ? "+" : ""}${doc.quantity}`, time: new Date(doc.created_at)
-           })));
-        }
-        if (ordersRes.data) {
-           initialNotifs.push(...ordersRes.data.map(doc => ({
-             id: doc.id, type: "order", title: "Đơn hàng mới", message: `#${doc.id.slice(-6)} - ${doc.customer_name || "Khách lẻ"}`, time: new Date(doc.created_at)
-           })));
-        }
-        if (guidesRes.data) {
-           initialNotifs.push(...guidesRes.data.map(doc => ({
-             id: doc.id, type: "guide", title: "Tài liệu mới", message: doc.title, time: new Date(doc.created_at)
-           })));
-        }
-
-        initialNotifs.sort((a, b) => b.time.getTime() - a.time.getTime());
-        setNotifications(initialNotifs.slice(0, 10));
-      } catch (e) {
-        console.error("Error fetching notifications", e);
-      }
+        const { count: ordersCount } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+        const { count: customersCount } = await supabase.from('customers').select('*', { count: 'exact', head: true });
+        setBadges({ orders: ordersCount || 0, customers: customersCount || 0 });
+      } catch (e) {}
     };
+    fetchCounts();
 
-    fetchNotifications();
-
-    const channel = supabase.channel('notifications')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inventory_logs' }, payload => {
-        setNotifications(prev => [{
-           id: payload.new.id, type: "inventory", title: "Biến động kho", message: `${payload.new.product_name}: ${payload.new.type === "in" ? "+" : ""}${payload.new.quantity}`, time: new Date(payload.new.created_at)
-        }, ...prev].slice(0, 10));
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-        setNotifications(prev => [{
-           id: payload.new.id, type: "order", title: "Đơn hàng mới", message: `#${payload.new.id.slice(-6)} - ${payload.new.customer_name || "Khách lẻ"}`, time: new Date(payload.new.created_at)
-        }, ...prev].slice(0, 10));
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guides' }, payload => {
-        setNotifications(prev => [{
-           id: payload.new.id, type: "guide", title: "Tài liệu mới", message: payload.new.title, time: new Date(payload.new.created_at)
-        }, ...prev].slice(0, 10));
-      })
+    const channelId = crypto.randomUUID();
+    const channel = supabase.channel(`badges-${channelId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchCounts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, fetchCounts)
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
+  const toggleSubmenu = (name: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    setExpandedMenus(prev => ({ ...prev, [name]: !prev[name] }));
+    if (!isSidebarOpen) setIsSidebarOpen(true);
+  };
+
+  const toggleFavorite = (e: React.MouseEvent, path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFavorites(prev => prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]);
+  };
+
   const handleLogout = async () => {
-    try {
-      const { logActivity } = await import("../lib/activityUtils");
-      await logActivity(
-        user as any,
-        "Hệ thống",
-        "Đăng xuất",
-        `Đã đăng xuất`,
-      );
-    } catch (e) {}
     await supabase.auth.signOut();
     navigate("/login");
   };
 
-  const [expandedMenus, setExpandedMenus] = React.useState<
-    Record<string, boolean>
-  >({
-    "POS Bán hàng": false,
-    "CRM Khách hàng": false,
-    "Lịch hẹn": false,
-    "Sức khỏe & Liệu trình": false,
-    "Sản phẩm & Dịch vụ": false,
-    "Kho": false,
-    "Giới thiệu (Referral)": false,
-    "Nhân sự": false,
-    "Báo cáo": false,
-    "Cài đặt": false,
-  });
-
-  const toggleSubmenu = (name: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    setExpandedMenus((prev) => ({ ...prev, [name]: !prev[name] }));
-    if (!isSidebarOpen) {
-      setIsSidebarOpen(true);
-    }
+  // RBAC Filtering Logic
+  const role = profile?.role || 'admin';
+  const hasPermission = (module: string) => {
+    if (role === 'admin') return true;
+    if (role === 'manager') return !['Hệ thống', 'Nhân sự'].includes(module);
+    if (role === 'sale') return ['POS BÁN HÀNG', 'CRM KHÁCH HÀNG', 'LỊCH HẸN'].includes(module);
+    if (role === 'kho') return ['KHO', 'SẢN PHẨM & DỊCH VỤ'].includes(module);
+    return true; // Default fallback
   };
 
-  const navItems = [
-    { name: "Tổng quan", icon: LayoutDashboard, path: "/" },
-    ...(profile?.role === "admin" || profile?.permissions?.orders?.view
-      ? [
-          {
-            name: "POS Bán hàng",
-            icon: ShoppingCart,
-            path: "/orders",
-            subItems: [
-              { name: "Tạo đơn hàng", path: "/orders/create" },
-              { name: "Hóa đơn", path: "/orders" },
-              { name: "Thanh toán", path: "/orders/payments" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.customers?.view
-      ? [
-          {
-            name: "CRM Khách hàng",
-            icon: Users,
-            path: "/customers",
-            subItems: [
-              { name: "Tất cả khách hàng", path: "/customers" },
-              { name: "Khách hàng giới thiệu", path: "/customers/referrers" },
-              { name: "Khách được giới thiệu", path: "/customers/referred" },
-              { name: "Thành viên", path: "/customers/members" },
-              { name: "Công nợ", path: "/customers/debts" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.services?.view
-      ? [
-          {
-            name: "Lịch hẹn",
-            icon: Calendar,
-            path: "/bookings",
-            subItems: [
-              { name: "Lịch hẹn", path: "/bookings" },
-              { name: "Lịch nhân viên", path: "/bookings/staff" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.services?.view
-      ? [
-          {
-            name: "Sức khỏe & Liệu trình",
-            icon: Activity,
-            path: "/health",
-            subItems: [
-              { name: "Hồ sơ sức khỏe", path: "/health/records" },
-              { name: "Liệu trình", path: "/health/treatments" },
-              { name: "Nhật ký trị liệu", path: "/health/logs" },
-              { name: "Kết quả tầm soát", path: "/health/screening" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.products?.view
-      ? [
-          {
-            name: "Sản phẩm & Dịch vụ",
-            icon: Package,
-            path: "/products",
-            subItems: [
-              { name: "Danh mục", path: "/products/categories" },
-              { name: "Sản phẩm", path: "/products" },
-              { name: "Dịch vụ", path: "/services" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.stock?.view
-      ? [
-          {
-            name: "Kho",
-            icon: Warehouse,
-            path: "/inventory",
-            subItems: [
-              { name: "Tổng quan kho", path: "/inventory/overview" },
-              { name: "Nhập kho", path: "/inventory/imports" },
-              { name: "Xuất kho", path: "/inventory/exports" },
-              { name: "Kiểm kho", path: "/inventory/reconcile" },
-              { name: "Điều chỉnh kho", path: "/inventory/adjustments" },
-              { name: "Lịch sử kho", path: "/inventory/logs" },
-              { name: "Nhà cung cấp", path: "/inventory/suppliers" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.customers?.view
-      ? [
-          {
-            name: "Giới thiệu (Referral)",
-            icon: Gift,
-            path: "/referrals",
-            subItems: [
-              { name: "Hoa hồng", path: "/referrals/commissions" },
-              { name: "Bảng xếp hạng", path: "/referrals/leaderboard" },
-              { name: "Báo cáo", path: "/referrals/reports" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.staff?.view
-      ? [
-          {
-            name: "Nhân sự",
-            icon: UserCog,
-            path: "/users",
-            subItems: [
-              { name: "Nhân viên", path: "/users" },
-              { name: "Phân quyền", path: "/users/roles" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.reports?.view
-      ? [
-          {
-            name: "Báo cáo",
-            icon: BarChart2,
-            path: "/reports",
-            subItems: [
-              { name: "Tổng quan", path: "/reports/overview" },
-              { name: "Doanh thu", path: "/reports/revenue" },
-              { name: "Đơn hàng", path: "/reports/orders" },
-              { name: "Sản phẩm", path: "/reports/products" },
-              { name: "Dịch vụ", path: "/reports/services" },
-              { name: "Nhân viên", path: "/reports/staff" },
-              { name: "Khách hàng", path: "/reports/customers" },
-              { name: "Giới thiệu", path: "/reports/referrals" },
-              { name: "Kho", path: "/reports/inventory" },
-            ],
-          },
-        ]
-      : []),
-    ...(profile?.role === "admin" || profile?.permissions?.settings?.view
-      ? [
-          {
-            name: "Cài đặt",
-            icon: Settings,
-            path: "/settings",
-            subItems: [
-              { name: "Hệ thống", path: "/settings/system" },
-              { name: "Audit Log", path: "/activity-logs" },
-              { name: "Backup", path: "/settings/backup" },
-            ],
-          },
-        ]
-      : []),
+  const allNavItems = [
+    { name: "TỔNG QUAN", icon: LayoutDashboard, path: "/", module: "Dashboard" },
+    {
+      name: "POS BÁN HÀNG",
+      icon: ShoppingCart,
+      path: "/orders",
+      module: "POS BÁN HÀNG",
+      badge: badges.orders,
+      subItems: [
+        { name: "Tạo đơn hàng", path: "/orders/create" },
+        { name: "Hóa đơn", path: "/orders" },
+        { name: "Thanh toán", path: "/orders/payments" },
+        { name: "Công nợ", path: "/finances/debts" },
+      ],
+    },
+    {
+      name: "CRM KHÁCH HÀNG",
+      icon: Users,
+      path: "/customers",
+      module: "CRM KHÁCH HÀNG",
+      badge: badges.customers,
+      subItems: [
+        { name: "Khách hàng", path: "/customers" },
+        { name: "Referral", path: "/customers/referrers" },
+        { name: "Thành viên", path: "/customers/loyalty" },
+      ],
+    },
+    {
+      name: "LỊCH HẸN",
+      icon: Calendar,
+      path: "/appointments",
+      module: "LỊCH HẸN",
+      subItems: [
+        { name: "Danh sách lịch hẹn", path: "/appointments" },
+        { name: "Lịch hôm nay", path: "/appointments/calendar" },
+        { name: "Lịch nhân viên", path: "/appointments/staff" },
+        { name: "Nhân viên", path: "/appointments/staff-config" },
+        { name: "Phòng dịch vụ", path: "/appointments/rooms" },
+      ],
+    },
+    {
+      name: "SỨC KHỎE & LIỆU TRÌNH",
+      icon: HeartPulse,
+      path: "/health",
+      module: "SỨC KHỎE",
+      subItems: [
+        { name: "Hồ sơ sức khỏe", path: "/health/records" },
+        { name: "Liệu trình", path: "/health/treatments" },
+        { name: "Nhật ký trị liệu", path: "/health/logs" },
+        { name: "Kết quả đánh giá", path: "/health/evaluations" },
+      ],
+    },
+    {
+      name: "SẢN PHẨM & DỊCH VỤ",
+      icon: Sparkles,
+      path: "/products",
+      module: "SẢN PHẨM & DỊCH VỤ",
+      subItems: [
+        { name: "Sản phẩm", path: "/products" },
+        { name: "Dịch vụ", path: "/services" },
+        { name: "Danh mục", path: "/products/categories" },
+        { name: "Cấu hình", path: "/products/settings" },
+      ],
+    },
+    {
+      name: "KHO",
+      icon: Warehouse,
+      path: "/inventory",
+      module: "KHO",
+      subItems: [
+        { name: "Kho hàng", path: "/inventory/stock" },
+        { name: "Giao dịch kho", path: "/inventory/transactions" },
+        { name: "Nhà cung cấp", path: "/inventory/suppliers" },
+      ],
+    },
+    {
+      name: "NHÂN SỰ",
+      icon: UserCog,
+      path: "/users",
+      module: "Nhân sự",
+      subItems: [
+        { name: "Nhân viên", path: "/users" },
+        { name: "Phân quyền", path: "/users/roles" },
+        { name: "Chấm công", path: "/users/timesheets" },
+        { name: "Lương thưởng", path: "/users/payroll" },
+      ],
+    },
+    {
+      name: "MARKETING",
+      icon: Tags,
+      path: "/marketing",
+      module: "MARKETING",
+      subItems: [
+        { name: "Voucher", path: "/customers/vouchers" },
+        { name: "Coupon", path: "/marketing/coupons" },
+        { name: "Membership", path: "/customers/loyalty-settings" },
+        { name: "Affiliate", path: "/customers/commissions" },
+      ],
+    },
+    {
+      name: "TÀI CHÍNH",
+      icon: DollarSign,
+      path: "/finances",
+      module: "TÀI CHÍNH",
+      subItems: [
+        { name: "Thu", path: "/finances/incomes" },
+        { name: "Chi", path: "/finances/expenses" },
+        { name: "Công nợ", path: "/finances/debts" },
+        { name: "Sổ quỹ", path: "/finances/cashbook" },
+      ],
+    },
+    {
+      name: "BÁO CÁO",
+      icon: BarChart2,
+      path: "/reports",
+      module: "BÁO CÁO",
+      subItems: [
+        { name: "Dashboard", path: "/reports" },
+        { name: "Doanh thu", path: "/reports/revenue" },
+        { name: "Sản phẩm", path: "/reports/products" },
+        { name: "Dịch vụ", path: "/reports/services" },
+        { name: "Nhân viên", path: "/reports/staff" },
+        { name: "Referral", path: "/reports/referral" },
+        { name: "Thành viên", path: "/reports/loyalty" },
+      ],
+    },
+    {
+      name: "HỆ THỐNG",
+      icon: Settings,
+      path: "/settings",
+      module: "Hệ thống",
+      subItems: [
+        { name: "Cài đặt chung", path: "/settings/store" },
+        { name: "Cấu hình thanh toán", path: "/settings/payment" },
+        { name: "Cấu hình hóa đơn", path: "/settings/invoice" },
+        { name: "Thùng rác", path: "/settings/trash" },
+        { name: "Nhật ký", path: "/settings/logs" },
+        { name: "Sao lưu", path: "/settings/backup" },
+        { name: "Khôi phục", path: "/settings/restore" },
+      ],
+    },
   ];
 
+  useEffect(() => {
+    // Record recent path
+    setRecents(prev => {
+      const currentPath = location.pathname;
+      const currentName = allNavItems.flatMap(i => i.subItems || [i]).find(i => i.path === currentPath)?.name || currentPath;
+      const filtered = prev.filter(p => p.path !== currentPath);
+      const updated = [{ path: currentPath, name: currentName }, ...filtered].slice(0, 5);
+      return updated;
+    });
+  }, [location.pathname]);
+
+  const filteredNavItems = allNavItems.filter(item => hasPermission(item.module));
+
+  // Menu Search Filter
+  const displayedNavItems = useMemo(() => {
+    if (!menuSearchQuery) return filteredNavItems;
+    const term = menuSearchQuery.toLowerCase();
+    return filteredNavItems.map(item => {
+      const matchName = item.name.toLowerCase().includes(term);
+      const matchSub = item.subItems?.filter(s => s.name.toLowerCase().includes(term));
+      if (matchName || (matchSub && matchSub.length > 0)) {
+        return { ...item, subItems: matchSub?.length ? matchSub : item.subItems };
+      }
+      return null;
+    }).filter(Boolean) as typeof allNavItems;
+  }, [filteredNavItems, menuSearchQuery]);
+
   return (
-    <div className="flex h-screen bg-[#F8FAFC] text-[#0F172A] font-sans">
+    <div className={cn("flex h-screen overflow-hidden font-sans", theme === 'dark' ? "dark bg-slate-900 text-slate-100" : "bg-[#F8FAFC] text-slate-900")}>
+      
       {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
-        {isSidebarOpen && (
+        {isMobileMenuOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="md:hidden fixed inset-0 bg-slate-900/40 z-[60] backdrop-blur-sm"
-            onClick={() => setIsSidebarOpen(false)}
+            className="md:hidden fixed inset-0 bg-slate-900/60 z-[60] backdrop-blur-sm"
+            onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
+      {/* Sidebar Layout */}
       <aside
         className={cn(
-          "fixed md:relative z-[70] flex flex-col h-full bg-white border-r border-slate-200 transition-all duration-300 shadow-2xl md:shadow-none",
-          isSidebarOpen
-            ? "w-[260px] translate-x-0"
-            : "-translate-x-full md:translate-x-0 md:w-[84px]",
+          "fixed md:relative z-[70] flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 ease-in-out shadow-2xl md:shadow-none",
+          // Mobile Drawer
+          isMobileMenuOpen ? "translate-x-0 w-[85%] max-w-[320px]" : "-translate-x-full md:translate-x-0",
+          // Desktop & Tablet
+          "md:translate-x-0",
+          isSidebarOpen ? "md:w-[240px] xl:w-[280px]" : "md:w-[72px]"
         )}
       >
-        <div className="p-5 border-b border-slate-100 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 flex items-center justify-center bg-blue-600 font-bold text-white shadow-md">
-            {/* Note: User must upload icon.png into public/ for this to display */}
-            <img
-              src="/icon.png"
-              alt="POS SYLPHID Logo"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-                e.currentTarget.parentElement!.innerText = "S";
-              }}
-            />
-          </div>
-          {isSidebarOpen && (
-            <div className="flex flex-col">
-               <span className="font-black text-lg tracking-tight text-slate-900 leading-tight">
-                 Sylphid
-               </span>
-               <span className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Health & Wellness</span>
+        {/* Header / Logo */}
+        <div className="h-[72px] flex items-center justify-between px-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center bg-blue-600 text-white font-black shadow-lg shadow-blue-500/30">
+               <span className="text-xl">S</span>
             </div>
-          )}
+            {(isSidebarOpen || isMobileMenuOpen) && (
+              <div className="flex flex-col whitespace-nowrap min-w-0">
+                 <span className="font-black text-lg tracking-tight text-slate-900 dark:text-white leading-tight">
+                   Sylphid
+                 </span>
+                 <span className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase">Enterprise</span>
+              </div>
+            )}
+          </div>
+          {/* Collapse Button (Desktop) */}
+          <button 
+            className="hidden md:flex p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          >
+            {isSidebarOpen ? <ChevronLeft size={18} /> : <Menu size={18} />}
+          </button>
+          {/* Close Button (Mobile) */}
+          <button 
+            className="md:hidden p-2 text-slate-400"
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            <X size={20} />
+          </button>
         </div>
 
-        <nav
-          className="flex-1 overflow-y-auto min-h-0 px-4 space-y-1 py-6 custom-scrollbar"
-        >
-          {navItems.map((item) => (
-            <div key={item.name}>
-              {item.subItems ? (
-                <div>
-                  <button
-                    onClick={(e) => toggleSubmenu(item.name, e)}
-                    className={cn(
-                      "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative text-slate-500 hover:text-slate-900 hover:bg-slate-50",
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <item.icon className="w-5 h-5 shrink-0 transition-colors" />
-                      {isSidebarOpen && (
-                        <span className="font-bold text-sm tracking-tight">{item.name}</span>
-                      )}
-                    </div>
-                  </button>
-                  <AnimatePresence>
-                    {isSidebarOpen && expandedMenus[item.name] && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden flex flex-col ml-[22px] pl-6 mt-1 space-y-1 border-l border-slate-100 relative"
-                      >
-                        {item.subItems.map((subItem) => (
-                          <NavLink
-                            key={subItem.path}
-                            to={subItem.path}
-                            end={
-                              subItem.path === "/products" ||
-                              subItem.path === "/services"
-                            }
-                            className={({ isActive }) =>
-                              cn(
-                                "text-xs font-bold px-4 py-2.5 rounded-lg transition-colors relative block",
-                                isActive
-                                  ? "text-blue-600 bg-blue-50/50"
-                                  : "text-slate-400 hover:text-slate-900 hover:bg-slate-50",
-                              )
-                            }
-                          >
-                            {/* Branch line indicator */}
-                            <div className="absolute left-[-24px] top-1/2 w-4 h-px bg-slate-100" />
-                            {subItem.name}
-                          </NavLink>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+        {/* User Info & Theme Toggle */}
+        {(isSidebarOpen || isMobileMenuOpen) && (
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 overflow-hidden">
+                   <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden ring-2 ring-white dark:ring-slate-800 shrink-0">
+                     <img src={`https://ui-avatars.com/api/?name=${profile?.name || user?.email}&background=0D8ABC&color=fff&bold=true`} alt="Avatar" className="w-full h-full object-cover" />
+                   </div>
+                   <div className="flex flex-col min-w-0">
+                     <span className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{profile?.name || 'Admin User'}</span>
+                     <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">{profile?.role || 'Admin'}</span>
+                   </div>
                 </div>
-              ) : (
-                <NavLink
-                  to={item.path}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative",
-                      isActive
-                        ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-bold"
-                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-50 font-bold",
-                    )
-                  }
-                >
-                  <item.icon
-                    className={cn("w-5 h-5 shrink-0 transition-colors")}
-                  />
-                  {isSidebarOpen && (
-                    <span className="text-sm tracking-tight">{item.name}</span>
-                  )}
-                  {!isSidebarOpen && (
-                    <div className="absolute left-[70px] bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-bold invisible md:group-hover:visible whitespace-nowrap z-50 shadow-xl">
-                      {item.name}
-                    </div>
-                  )}
-                </NavLink>
-              )}
+                <div className="flex flex-col gap-1">
+                   {['light', 'dark', 'auto'].map((t) => (
+                      <button 
+                         key={t}
+                         onClick={() => setTheme(t as any)}
+                         className={cn("p-1 rounded text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors", theme === t && "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30")}
+                         title={`Theme: ${t}`}
+                      >
+                         {t === 'light' ? <Sun size={12}/> : t === 'dark' ? <Moon size={12}/> : <Monitor size={12}/>}
+                      </button>
+                   ))}
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Menu Search */}
+        {(isSidebarOpen || isMobileMenuOpen) && (
+          <div className="p-4 pb-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Tìm chức năng..." 
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-900 transition-all dark:text-white"
+                value={menuSearchQuery}
+                onChange={e => {
+                   setMenuSearchQuery(e.target.value);
+                   // Auto expand all when searching
+                   if (e.target.value) {
+                      const allKeys = displayedNavItems.reduce((acc, item) => ({...acc, [item.name]: true}), {});
+                      setExpandedMenus(allKeys);
+                   }
+                }}
+              />
             </div>
-          ))}
+          </div>
+        )}
+
+        {/* Navigation List */}
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar py-2 px-3 space-y-1">
+          
+          {/* Favorites & Recents Section (Only visible when expanded) */}
+          {(isSidebarOpen || isMobileMenuOpen) && !menuSearchQuery && (
+            <>
+              {favorites.length > 0 && (
+                <div className="mb-4 mt-2">
+                   <div className="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-2">
+                      <Star size={10} className="text-amber-400"/> Đã ghim
+                   </div>
+                   {favorites.map(path => {
+                      const item = allNavItems.flatMap(i => i.subItems || [i]).find(i => i.path === path);
+                      if(!item) return null;
+                      return (
+                        <NavLink key={path} to={path} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 group">
+                           <span>{item.name}</span>
+                           <button onClick={(e) => toggleFavorite(e, path)} className="opacity-0 group-hover:opacity-100 text-amber-400"><X size={12}/></button>
+                        </NavLink>
+                      );
+                   })}
+                </div>
+              )}
+              {recents.length > 0 && (
+                <div className="mb-4">
+                   <div className="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-2">
+                      <Clock size={10} /> Gần đây
+                   </div>
+                   {recents.map(r => (
+                      <NavLink key={r.path} to={r.path} className="flex items-center px-3 py-1.5 rounded-lg text-[11px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800">
+                         {r.name}
+                      </NavLink>
+                   ))}
+                </div>
+              )}
+              <div className="border-t border-slate-100 dark:border-slate-800 my-2 mx-2"></div>
+            </>
+          )}
+
+          {displayedNavItems.map((item) => {
+            const hasSub = item.subItems && item.subItems.length > 0;
+            const isExpanded = expandedMenus[item.name];
+
+            return (
+              <div key={item.name} className="relative group">
+                {/* Tooltip for collapsed mode */}
+                {!isSidebarOpen && !isMobileMenuOpen && (
+                  <div className="absolute left-[70px] top-1/2 -translate-y-1/2 bg-slate-900 text-white px-3 py-2 rounded-lg text-xs font-bold opacity-0 invisible group-hover:opacity-100 group-hover:visible whitespace-nowrap z-[100] shadow-xl pointer-events-none transition-all duration-200">
+                    {item.name}
+                    {item.badge ? <span className="ml-2 px-1.5 py-0.5 bg-rose-500 text-white rounded text-[9px]">{item.badge}</span> : null}
+                  </div>
+                )}
+
+                {hasSub ? (
+                  <div>
+                    <button
+                      onClick={(e) => toggleSubmenu(item.name, e)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 hover:scale-[1.02]",
+                        isExpanded ? "bg-slate-50 dark:bg-slate-800" : "hover:bg-slate-50 dark:hover:bg-slate-800",
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", isExpanded ? "text-blue-600" : "text-slate-500")} />
+                        {(isSidebarOpen || isMobileMenuOpen) && (
+                          <span className={cn("font-bold text-sm tracking-tight truncate", isExpanded ? "text-blue-600" : "text-slate-700 dark:text-slate-300")}>{item.name}</span>
+                        )}
+                      </div>
+                      {(isSidebarOpen || isMobileMenuOpen) && (
+                        <div className="flex items-center gap-2">
+                           {item.badge ? <span className="px-1.5 py-0.5 bg-rose-100 text-rose-600 rounded-md text-[10px] font-black">{item.badge}</span> : null}
+                           <ChevronRight size={14} className={cn("text-slate-400 transition-transform duration-200", isExpanded && "rotate-90 text-blue-600")} />
+                        </div>
+                      )}
+                    </button>
+                    
+                    <AnimatePresence>
+                      {(isSidebarOpen || isMobileMenuOpen) && isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden flex flex-col ml-[22px] pl-4 mt-1 space-y-0.5 border-l-2 border-slate-100 dark:border-slate-800"
+                        >
+                          {item.subItems?.map((subItem) => (
+                            <NavLink
+                              key={subItem.path}
+                              to={subItem.path}
+                              className={({ isActive }) =>
+                                cn(
+                                  "group flex items-center justify-between text-xs font-bold px-4 py-2.5 rounded-xl transition-all relative overflow-hidden",
+                                  isActive
+                                    ? "text-blue-700 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/20"
+                                    : "text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800",
+                                )
+                              }
+                            >
+                              {({ isActive }) => (
+                                <>
+                                  {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-r-full" />}
+                                  <span className="relative z-10">{subItem.name}</span>
+                                  <button 
+                                     onClick={(e) => toggleFavorite(e, subItem.path)}
+                                     className={cn("opacity-0 group-hover:opacity-100 transition-opacity z-10", favorites.includes(subItem.path) ? "text-amber-400 opacity-100" : "text-slate-300 hover:text-amber-400")}
+                                  >
+                                     <Star size={12} fill={favorites.includes(subItem.path) ? "currentColor" : "none"}/>
+                                  </button>
+                                </>
+                              )}
+                            </NavLink>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <NavLink
+                    to={item.path}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 hover:scale-[1.02] relative overflow-hidden group",
+                        isActive
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-500/30"
+                          : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white",
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <item.icon className="w-5 h-5 shrink-0" />
+                          {(isSidebarOpen || isMobileMenuOpen) && (
+                            <span className="text-sm font-bold tracking-tight truncate">{item.name}</span>
+                          )}
+                        </div>
+                        {(isSidebarOpen || isMobileMenuOpen) && (
+                          <div className="flex items-center gap-2">
+                            {item.badge ? <span className={cn("px-1.5 py-0.5 rounded-md text-[10px] font-black", isActive ? "bg-white/20 text-white" : "bg-rose-100 text-rose-600")}>{item.badge}</span> : null}
+                            <button 
+                               onClick={(e) => toggleFavorite(e, item.path)}
+                               className={cn("opacity-0 group-hover:opacity-100 transition-opacity", favorites.includes(item.path) ? "text-amber-400 opacity-100" : isActive ? "text-white/50 hover:text-amber-400" : "text-slate-300 hover:text-amber-400")}
+                            >
+                               <Star size={12} fill={favorites.includes(item.path) ? "currentColor" : "none"}/>
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </NavLink>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
-        <div className="p-4 mt-auto border-t border-slate-100">
-          <div className="bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100">
-            <p className="text-slate-400 text-[9px] uppercase tracking-[0.2em] font-black mb-2">
-              Gói dịch vụ
-            </p>
-            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-              <div
-                className="bg-blue-600 h-full rounded-full"
-                style={{ width: "75%" }}
-              ></div>
-            </div>
-            <p className="text-slate-700 text-[10px] mt-2 font-black tracking-tight">
-              3,450 / 5,000 SKUs
-            </p>
-          </div>
+        {/* Footer: Logout */}
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-rose-500 hover:bg-rose-50 transition-all font-bold"
+            className="w-full flex items-center justify-center gap-3 p-3 rounded-xl text-rose-500 font-bold hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
           >
-            <LogOut className="w-5 h-5 shrink-0" />
-            {isSidebarOpen && <span>Đăng xuất</span>}
+            <LogOut size={18} />
+            {(isSidebarOpen || isMobileMenuOpen) && <span>Đăng xuất</span>}
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#F8FAFC]">
-        {/* Header */}
-        <header className="h-[72px] bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 shrink-0 relative z-50">
-          <div className="flex items-center gap-3 sm:gap-6 flex-1 min-w-0">
-            <button
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-500 shrink-0"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <div className="relative group w-full max-w-2xl hidden md:block">
-              <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm khách hàng, đơn hàng, lịch hẹn, sản phẩm..."
-                className="w-full pl-12 pr-12 py-3 bg-slate-50 border border-slate-100 rounded-[16px] text-[13px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400"
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                 <kbd className="hidden sm:inline-block px-2 py-1 text-[10px] font-bold text-slate-400 bg-white border border-slate-200 rounded-lg">Ctrl + K</kbd>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 sm:gap-6">
-            <div className="relative hidden sm:block">
-               <button 
-                  onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
-                  className={cn("px-4 py-2.5 rounded-[14px] flex items-center gap-2 font-bold text-sm transition-all border shadow-sm", 
-                                isCreateMenuOpen ? "bg-blue-700 text-white border-blue-700" : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700")}
-               >
-                 <Plus className="w-4 h-4" />
-                 Tạo nhanh
-               </button>
-               <AnimatePresence>
-                 {isCreateMenuOpen && (
-                   <>
-                     <div className="fixed inset-0 z-40" onClick={() => setIsCreateMenuOpen(false)} />
-                     <motion.div
-                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                       className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden origin-top-right py-2"
-                     >
-                        <div className="px-4 py-2 border-b border-slate-50">
-                           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tạo nhanh</p>
-                        </div>
-                        <div className="flex flex-col">
-                           <button onClick={() => { setIsCreateMenuOpen(false); navigate('/orders', { state: { action: 'create' } }); }} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors text-left w-full">
-                              <ShoppingCart className="w-4 h-4 text-emerald-500" />
-                              Tạo đơn hàng mới
-                           </button>
-                           <button onClick={() => { setIsCreateMenuOpen(false); navigate('/bookings', { state: { action: 'create' } }); }} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors text-left w-full">
-                              <Calendar className="w-4 h-4 text-blue-500" />
-                              Tạo lịch hẹn
-                           </button>
-                           <button onClick={() => { setIsCreateMenuOpen(false); navigate('/customers', { state: { action: 'create' } }); }} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors text-left w-full">
-                              <Users className="w-4 h-4 text-purple-500" />
-                              Tạo khách hàng
-                           </button>
-                           <button onClick={() => { setIsCreateMenuOpen(false); navigate('/inventory/imports', { state: { action: 'create' } }); }} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors text-left w-full">
-                              <Box className="w-4 h-4 text-orange-500" />
-                              Tạo phiếu nhập kho
-                           </button>
-                           <button onClick={() => { setIsCreateMenuOpen(false); navigate('/inventory/exports', { state: { action: 'create' } }); }} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors text-left w-full">
-                              <Warehouse className="w-4 h-4 text-rose-500" />
-                              Tạo phiếu xuất kho
-                           </button>
-                           <button onClick={() => { setIsCreateMenuOpen(false); navigate('/reports'); }} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors text-left w-full">
-                              <BarChart2 className="w-4 h-4 text-indigo-500" />
-                              Tạo báo cáo
-                           </button>
-                        </div>
-                     </motion.div>
-                   </>
-                 )}
-               </AnimatePresence>
-            </div>
-
-            <div className="relative">
-              <button
-                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
-              >
-                <Bell className="w-6 h-6" />
-                {notifications.length > 0 && (
-                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white animate-pulse"></span>
-                )}
+      {/* Main Content wrapper */}
+      <main className="flex-1 flex flex-col min-w-0 bg-[#F1F5F9] dark:bg-slate-900 relative">
+        {/* Mobile Header */}
+        <header className="md:hidden h-[60px] bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 shrink-0">
+           <div className="flex items-center gap-3">
+              <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 -ml-2 text-slate-500">
+                 <Menu size={24} />
               </button>
-
-              <AnimatePresence>
-                {isNotificationsOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setIsNotificationsOpen(false)}
-                    />
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="fixed left-4 right-4 top-16 sm:left-auto sm:top-auto sm:absolute sm:right-0 mt-2 sm:w-[380px] bg-white rounded-[24px] shadow-2xl border border-slate-100 z-50 overflow-hidden flex flex-col max-h-[80vh] sm:max-h-[600px] origin-top-right"
-                    >
-                      <div className="p-5 border-b border-slate-50 flex items-center justify-between shrink-0">
-                        <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400">
-                          Thông báo mới
-                        </h4>
-                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-md text-[9px] font-black">
-                          {notifications.length}
-                        </span>
-                      </div>
-                      <div className="overflow-y-auto flex-1 custom-scrollbar">
-                        {notifications.length === 0 ? (
-                          <div className="p-10 text-center text-slate-300 text-[10px] font-black uppercase tracking-widest">
-                            Không có thông báo
-                          </div>
-                        ) : (
-                          notifications
-                            .slice(0, notificationLimit)
-                            .map((n, i) => (
-                              <div
-                                key={i}
-                                className="p-5 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 group cursor-pointer"
-                              >
-                                <div className="flex gap-4">
-                                  <div
-                                    className={cn(
-                                      "w-10 h-10 rounded-xl shrink-0 flex items-center justify-center",
-                                      n.type === "order"
-                                        ? "bg-emerald-50 text-emerald-600"
-                                        : n.type === "guide"
-                                          ? "bg-purple-50 text-purple-600"
-                                          : "bg-amber-50 text-amber-600",
-                                    )}
-                                  >
-                                    {n.type === "order" ? (
-                                      <ShoppingCart className="w-5 h-5" />
-                                    ) : n.type === "guide" ? (
-                                      <BookOpen className="w-5 h-5" />
-                                    ) : (
-                                      <Box className="w-5 h-5" />
-                                    )}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="font-black text-xs text-slate-900 uppercase tracking-tight line-clamp-1 italic">
-                                      {n.title}
-                                    </p>
-                                    <p className="text-[10px] text-slate-500 font-bold mt-0.5 line-clamp-2">
-                                      {n.message}
-                                    </p>
-                                    <p className="text-[9px] text-slate-300 font-bold uppercase mt-2">
-                                      {n.time?.toLocaleTimeString("vi-VN")}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            ))
-                        )}
-                      </div>
-                      <div className="flex flex-col shrink-0">
-                        {notifications.length > notificationLimit && (
-                          <button
-                            onClick={() =>
-                              setNotificationLimit((prev) => prev + 5)
-                            }
-                            className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-50 transition-colors border-b border-slate-50"
-                          >
-                            Xem thêm ({notifications.length - notificationLimit}
-                            )
-                          </button>
-                        )}
-                        <button className="w-full py-4 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-100 transition-colors">
-                          Đánh dấu đã xem tất cả
-                        </button>
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-
-            <div className="flex items-center gap-4 pl-4 sm:pl-6 border-l border-slate-200 ml-2">
-              <div className="w-[42px] h-[42px] rounded-full bg-slate-200 overflow-hidden shadow-sm border-2 border-white ring-1 ring-slate-100">
-                <img
-                  src={`https://ui-avatars.com/api/?name=${user?.email}&background=e2e8f0&color=475569&bold=true`}
-                  alt="avatar"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="text-left hidden sm:block pr-2">
-                <p className="text-[13px] font-black text-slate-900 truncate max-w-[120px]">
-                  {profile?.name || 'Nguyễn An'}
-                </p>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mt-0.5">
-                  Admin
-                </p>
-              </div>
-            </div>
-          </div>
+              <div className="font-black text-lg text-slate-800 dark:text-white">Sylphid</div>
+           </div>
+           {/* Add global search or notifications for mobile here if needed */}
         </header>
 
-        {/* Dynamic Page Content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 md:p-8">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Outlet />
-          </motion.div>
+        {/* Desktop Header Top bar (optional, can be kept minimal) */}
+        <div className="hidden md:flex h-[72px] bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-6 shrink-0 z-10 shadow-sm">
+           <div className="text-sm font-semibold text-slate-500 uppercase tracking-widest">{allNavItems.flatMap(i => i.subItems || [i]).find(i => i.path === location.pathname)?.name || 'Dashboard'}</div>
+           <div className="flex items-center gap-4">
+              <button className="relative p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                 <Bell size={20} />
+                 {badges.orders > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white dark:border-slate-900"></span>}
+              </button>
+           </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
+           <Outlet />
         </div>
       </main>
+      
       <Toaster position="top-right" toastOptions={{ className: 'text-sm font-medium' }} />
     </div>
   );

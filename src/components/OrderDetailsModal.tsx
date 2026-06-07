@@ -152,7 +152,7 @@ export function OrderDetailsModal({ order, onClose }: Props) {
                     <div>
                       <p className="text-sm font-black text-slate-900">
                         {order.createdAt
-                          ? formatDate(order.createdAt.toDate())
+                          ? formatDate(order.createdAt)
                           : "N/A"}
                       </p>
                       <p className="text-[10px] text-slate-500 font-bold uppercase mt-0.5">

@@ -12,12 +12,25 @@ const tableNameMap: Record<string, string> = {
   'roles': 'roles',
   'categories': 'categories',
   'serviceCategories': 'service_categories',
+  'productCategories': 'product_categories',
+  'brands': 'brands',
+  'productVariants': 'product_variants',
+  'serviceCombos': 'service_combos',
+  'treatmentCourses': 'treatment_courses',
+  'customerTreatmentCourses': 'customer_treatment_courses',
+  'inventoryTransactions': 'inventory_transactions',
   'guideCategories': 'guide_categories',
   'customer_transactions': 'customer_transactions',
   'bookings': 'bookings',
   'suppliers': 'suppliers',
   'stockImports': 'stock_imports',
-  'stockExports': 'stock_exports'
+  'stockExports': 'stock_exports',
+  'priceRules': 'price_rules',
+  'commissionRules': 'commission_rules',
+  'healthRecords': 'health_records',
+  'treatmentPlans': 'treatment_plans',
+  'therapyLogs': 'therapy_logs',
+  'healthEvaluations': 'health_evaluations'
 };
 
 const mapTableName = (name: string) => tableNameMap[name] || name;
@@ -32,24 +45,35 @@ const convertToSupabaseData = (data: any) => {
     if (key === 'createdAt' || key === 'updatedAt' || key === 'deletedAt' || key === 'commissionPaidAt') {
       result[toSnakeCase(key)] = data[key] === 'SERVER_TIMESTAMP' ? new Date().toISOString() : data[key];
     } else {
-      result[toSnakeCase(key)] = data[key];
+      let val = data[key];
+      // Supabase UUID columns will throw fatal error if we pass empty string ""
+      if (val === '' && (key.endsWith('Id') || key.endsWith('By') || key === 'id')) {
+        val = null;
+      }
+      result[toSnakeCase(key)] = val;
     }
   }
   return result;
 };
 
 const convertToFirebaseData = (data: any) => {
+  if (data === null || typeof data !== 'object') return data;
+  
+  if (Array.isArray(data)) {
+    return data.map(item => convertToFirebaseData(item));
+  }
+
   const result: any = {};
   for (const key in data) {
     let newKey = toCamelCase(key);
-    let val = data[key];
+    let originalVal = data[key];
     
     // Handle timestamps
-    if ((key.endsWith('_at') || key === 'dob' || key === 'join_date' || key === 'booking_date' || key === 'order_date') && val) {
-       val = { toDate: () => new Date(val) };
+    if ((key.endsWith('_at') || key === 'dob' || key === 'join_date' || key === 'booking_date' || key === 'order_date') && originalVal) {
+       result[newKey] = { toDate: () => new Date(originalVal) };
+    } else {
+       result[newKey] = convertToFirebaseData(originalVal);
     }
-    
-    result[newKey] = val;
   }
   return result;
 };
@@ -167,18 +191,32 @@ export const onSnapshot = (q: any, onNext: (snapshot: any) => void, onError?: (e
   const fetchAndNotify = async () => {
     try {
       let builder = supabase.from(table).select('*');
-      builder = applyQueryConstraints(builder, q.constraints);
-      const { data, error } = await builder;
-      if (error) throw error;
       
-      onNext({
-        empty: !data || data.length === 0,
-        docs: (data || []).map((d: any) => ({
-          id: d.id,
-          data: () => convertToFirebaseData(d),
-          ref: { id: d.id, path: q.path }
-        }))
-      });
+      if (q.id && !q.constraints) {
+         builder = builder.eq('id', q.id).maybeSingle();
+         const { data, error } = await builder;
+         if (error && error.code !== 'PGRST116' && error.code !== '42P01') throw error;
+         
+         onNext({
+           exists: () => !!data,
+           id: q.id,
+           data: () => data ? convertToFirebaseData(data) : undefined,
+           ref: q
+         });
+      } else {
+         builder = applyQueryConstraints(builder, q.constraints);
+         const { data, error } = await builder;
+         if (error && error.code !== '42P01') throw error;
+         
+         onNext({
+           empty: !data || data.length === 0,
+           docs: (data || []).map((d: any) => ({
+             id: d.id,
+             data: () => convertToFirebaseData(d),
+             ref: { id: d.id, path: q.path }
+           }))
+         });
+      }
     } catch (err) {
       if (onError) onError(err);
     }
@@ -186,7 +224,8 @@ export const onSnapshot = (q: any, onNext: (snapshot: any) => void, onError?: (e
 
   fetchAndNotify();
 
-  const channel = supabase.channel(`public:${table}`)
+  const channelId = crypto.randomUUID();
+  const channel = supabase.channel(`public:${table}:${channelId}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: table }, () => {
       fetchAndNotify();
     })
@@ -215,11 +254,14 @@ export const writeBatch = (db: any) => {
       // So we will execute them sequentially for this compatibility layer.
       for (const op of operations) {
         if (op.type === 'upsert') {
-          await supabase.from(op.table).upsert(op.data);
+          const { error } = await supabase.from(op.table).upsert(op.data);
+          if (error) throw error;
         } else if (op.type === 'update') {
-          await supabase.from(op.table).update(op.data).eq('id', op.id);
+          const { error } = await supabase.from(op.table).update(op.data).eq('id', op.id);
+          if (error) throw error;
         } else if (op.type === 'delete') {
-          await supabase.from(op.table).delete().eq('id', op.id);
+          const { error } = await supabase.from(op.table).delete().eq('id', op.id);
+          if (error) throw error;
         }
       }
     }

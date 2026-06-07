@@ -18,10 +18,10 @@ interface DateFilterState {
 export const useDateFilterStore = create<DateFilterState>((set) => {
   const today = new Date();
   return {
-    filterType: 'today',
+    filterType: 'all',
     dateRange: {
-      startDate: startOfDay(today),
-      endDate: endOfDay(today)
+      startDate: null,
+      endDate: null
     },
     setFilter: (filterType, dateRange) => set({ filterType, dateRange }),
     setDateRange: (dateRange) => set({ dateRange, filterType: 'custom' })

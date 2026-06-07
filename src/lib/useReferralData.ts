@@ -13,6 +13,8 @@ export interface ReferrerData {
   totalReferralRevenue: number;
   totalReferralOrders: number;
   totalCommission: number;
+  paidCommission: number;
+  unpaidCommission: number;
 }
 
 export function useReferralData(dateRange?: { startDate: Date | null, endDate: Date | null }) {
@@ -26,7 +28,10 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
 
   useEffect(() => {
     let refs = 3;
+    console.log("useReferralData init, waiting for 3 collections");
+    
     const unsubCustomers = onSnapshot(collection(db, "customers"), (snap) => {
+      console.log("customers loaded", snap.docs.length);
       setCustomers(
         snap.docs
           .map((doc) => ({ id: doc.id, ...doc.data() }) as Customer)
@@ -37,26 +42,47 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
               c.status !== "inactive",
           ),
       );
-      if (--refs === 0) setLoading(false);
+      refs--;
+      console.log("refs remaining (customers):", refs);
+      if (refs <= 0) setLoading(false);
+    }, (err) => {
+      console.error("Error loading customers:", err);
+      refs--;
+      if (refs <= 0) setLoading(false);
     });
 
     const unsubOrders = onSnapshot(collection(db, "orders"), (snap) => {
+      console.log("orders loaded", snap.docs.length);
       setOrders(
         snap.docs
           .map((doc) => ({ id: doc.id, ...doc.data() }) as Order)
           .filter((o) => !o.deletedAt && o.status === "paid"),
       ); // Only paid orders count
-      if (--refs === 0) setLoading(false);
+      refs--;
+      console.log("refs remaining (orders):", refs);
+      if (refs <= 0) setLoading(false);
+    }, (err) => {
+      console.error("Error loading orders:", err);
+      refs--;
+      if (refs <= 0) setLoading(false);
     });
 
     const unsubSettings = onSnapshot(
       doc(db, "system_configs", "global"),
       (snap) => {
-        if (snap.exists() && snap.data().referral) {
+        console.log("settings loaded. exists?", snap.exists());
+        if (snap.exists() && snap.data()?.referral) {
           setSettings(snap.data().referral);
         }
-        if (--refs === 0) setLoading(false);
+        refs--;
+        console.log("refs remaining (settings):", refs);
+        if (refs <= 0) setLoading(false);
       },
+      (err) => {
+        console.error("Error loading settings:", err);
+        refs--;
+        if (refs <= 0) setLoading(false);
+      }
     );
 
     return () => {
@@ -103,6 +129,8 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
             totalReferralRevenue: 0,
             totalReferralOrders: 0,
             totalCommission: 0,
+            paidCommission: 0,
+            unpaidCommission: 0,
           });
         }
         referrersMap.get(c.referredById)!.referredCustomers.push(c);
@@ -114,9 +142,14 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
       let totalRev = 0;
       let totalOrders = 0;
       let totalComm = 0;
+      let paidComm = 0;
+      let unpaidComm = 0;
 
-      // Find all orders referred by this referrer
-      let referredOrders = orders.filter((o) => o.referredById === referrerId);
+      // Find all orders from customers referred by this referrer, or explicitly marked
+      let referredOrders = orders.filter((o) => 
+        o.referredById === referrerId || 
+        (o.customerId && data.referredCustomers.find(c => c.id === o.customerId))
+      );
       
       if (dateRange?.startDate && dateRange?.endDate) {
          referredOrders = referredOrders.filter(o => {
@@ -131,7 +164,13 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
         
         // Sum commission if it's eligible and computed on order
         if (o.commissionEligible !== false) {
-           totalComm += o.commissionAmount || 0;
+           const commAmount = o.commissionAmount || 0;
+           totalComm += commAmount;
+           if (o.commissionStatus === 'paid') {
+              paidComm += commAmount;
+           } else {
+              unpaidComm += commAmount;
+           }
         }
       });
 
@@ -143,8 +182,12 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
       // But if Method = TOTAL_REVENUE, then total commission = totalRev * (percent/100).
       if (settings.commissionMethod === "TOTAL_REVENUE") {
          data.totalCommission = totalRev * (settings.commissionPercent / 100);
+         data.paidCommission = paidComm;
+         data.unpaidCommission = Math.max(0, data.totalCommission - paidComm);
       } else {
          data.totalCommission = totalComm;
+         data.paidCommission = paidComm;
+         data.unpaidCommission = unpaidComm;
       }
     });
 

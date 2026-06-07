@@ -14,21 +14,49 @@ import { Dashboard } from './pages/Dashboard';
 import { Products } from './pages/Products';
 import { Orders } from './pages/Orders';
 import { CreateOrder } from './pages/CreateOrder';
+import { Payment } from './pages/Payment';
 import { Customers } from './pages/Customers';
 import { Inventory } from './pages/Inventory';
 import { Users } from './pages/Users';
-import { Services } from './pages/Services';
+import { Health } from './pages/Health';
+import { ServicesMaster } from './pages/services/ServicesMaster';
 import { Bookings } from './pages/Bookings';
+import { Finances } from './pages/Finances';
 import { Guides } from './pages/Guides';
 import { ActivityLogs } from './pages/ActivityLogs';
 import { Reports } from './pages/Reports';
 import { Login } from './pages/Login';
 import { Settings } from './pages/Settings';
 
+import { CategoriesMaster } from './pages/products/CategoriesMaster';
+import { ProductSettings } from './pages/products/ProductSettings';
+
 import { Referrers } from './pages/customers/Referrers';
 import { ReferredList } from './pages/customers/ReferredList';
 import { CommissionHistory } from './pages/customers/CommissionHistory';
+import { LoyaltySettings } from './pages/customers/LoyaltySettings';
+import { LoyaltyDashboard } from './pages/customers/LoyaltyDashboard';
 import { ReferralReport } from './pages/reports/ReferralReport';
+
+import { Vouchers } from './pages/customers/Vouchers';
+import { AppointmentList } from './pages/appointments/AppointmentList';
+import { AppointmentCalendar } from './pages/appointments/AppointmentCalendar';
+import { AppointmentForm } from './pages/appointments/AppointmentForm';
+import { StaffScheduler } from './pages/appointments/StaffScheduler';
+import { StaffManagement } from './pages/appointments/StaffManagement';
+import { RoomManagement } from './pages/appointments/RoomManagement';
+import { ServiceCombos } from './pages/services/ServiceCombos';
+import { Incomes } from './pages/finances/Incomes';
+import { Expenses } from './pages/finances/Expenses';
+import { Debts } from './pages/finances/Debts';
+import { Timesheets } from './pages/users/Timesheets';
+import { Payroll } from './pages/users/Payroll';
+import { StaffCommissions } from './pages/users/StaffCommissions';
+import { StoreSettings } from './pages/settings/StoreSettings';
+import { Branches } from './pages/settings/Branches';
+import { Devices } from './pages/settings/Devices';
+import { PaymentSettings } from './pages/settings/PaymentSettings';
+import { InvoiceSettings } from './pages/settings/InvoiceSettings';
 
 import { SettingsProvider } from './lib/settings';
 
@@ -201,17 +229,48 @@ export default function App() {
             <Route element={user ? <Layout /> : <Navigate to="/login" />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/products" element={<Products />} />
+              <Route path="/products/categories" element={<CategoriesMaster />} />
+              <Route path="/products/settings" element={<ProductSettings />} />
               <Route path="/guides" element={<Guides />} />
-              <Route path="/services" element={<Services />} />
-              <Route path="/bookings" element={<Bookings />} />
+              <Route path="/services" element={<ServicesMaster />} />
+              <Route path="/services/combos" element={<Navigate to="/services" />} />
+              <Route path="/services/*" element={<ServicesMaster />} />
+              <Route path="/bookings" element={<Navigate to="/appointments" />} />
+              <Route path="/bookings/rooms" element={<Navigate to="/appointments/rooms" />} />
+              <Route path="/bookings/history" element={<Navigate to="/appointments" />} />
+              <Route path="/bookings/staff" element={<Navigate to="/appointments/staff" />} />
+              {/* ── APPOINTMENTS MODULE ── */}
+              <Route path="/appointments" element={<AppointmentList />} />
+              <Route path="/appointments/calendar" element={<AppointmentCalendar />} />
+              <Route path="/appointments/staff" element={<StaffScheduler />} />
+              <Route path="/appointments/new" element={<AppointmentForm />} />
+              <Route path="/appointments/:id/edit" element={<AppointmentForm />} />
+              <Route path="/appointments/staff-config" element={<StaffManagement />} />
+              <Route path="/appointments/rooms" element={<RoomManagement />} />
+              <Route path="/finances" element={<Finances />} />
+              <Route path="/finances/incomes" element={<Incomes />} />
+              <Route path="/finances/expenses" element={<Expenses />} />
+              <Route path="/finances/debts" element={<Debts />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/orders/create" element={<CreateOrder />} />
+              <Route path="/orders/payments" element={<Payment />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/customers/referrers" element={<Referrers />} />
               <Route path="/customers/referred" element={<ReferredList />} />
               <Route path="/customers/commissions" element={<CommissionHistory />} />
-              <Route path="/inventory" element={<Inventory />} />
-              <Route path="/inventory/:tab" element={<Inventory />} />
+              <Route path="/customers/loyalty" element={<LoyaltyDashboard />} />
+              <Route path="/customers/loyalty-settings" element={<LoyaltySettings />} />
+              <Route path="/customers/vouchers" element={<Vouchers />} />
+              
+              {/* ── HEALTH & TREATMENT MODULE ── */}
+              <Route path="/health/*" element={<Health />} />
+
+              <Route path="/inventory" element={<Navigate to="/inventory/stock" />} />
+              <Route path="/inventory/stock" element={<Inventory />} />
+              <Route path="/inventory/transactions" element={<Inventory />} />
+              <Route path="/inventory/transactions/:transTab" element={<Inventory />} />
+              <Route path="/inventory/suppliers" element={<Inventory />} />
+              <Route path="/inventory/suppliers/:id" element={<Inventory />} />
               {(profile?.role === 'admin' || profile?.permissions?.reports?.view) && (
                 <>
                   <Route path="/reports" element={<Reports />} />
@@ -222,11 +281,21 @@ export default function App() {
               {(profile?.role === 'admin' || profile?.permissions?.staff?.view) && (
                 <>
                   <Route path="/users" element={<Users />} />
+                  <Route path="/users/timesheets" element={<Timesheets />} />
+                  <Route path="/users/payroll" element={<Payroll />} />
+                  <Route path="/users/commissions" element={<StaffCommissions />} />
                   <Route path="/activity-logs" element={<ActivityLogs />} />
                 </>
               )}
               {(profile?.role === 'admin' || profile?.permissions?.settings?.view) && (
-                 <Route path="/settings" element={<Settings />} />
+                 <>
+                   <Route path="/settings" element={<Settings />} />
+                   <Route path="/settings/store" element={<StoreSettings />} />
+                   <Route path="/settings/branches" element={<Branches />} />
+                   <Route path="/settings/devices" element={<Devices />} />
+                   <Route path="/settings/payment" element={<PaymentSettings />} />
+                   <Route path="/settings/invoice" element={<InvoiceSettings />} />
+                 </>
               )}
             </Route>
           </Routes>

@@ -308,3 +308,21 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_exports;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.guide_categories;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.guides;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.activity_logs;
+
+-- 19. Debt Payments Table
+CREATE TABLE IF NOT EXISTS public.debt_payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code TEXT NOT NULL UNIQUE,
+  customer_id UUID REFERENCES public.customers(id),
+  customer_name TEXT,
+  amount NUMERIC NOT NULL,
+  payment_method TEXT,
+  notes TEXT,
+  order_ids JSONB DEFAULT '[]',
+  created_by UUID REFERENCES public.user_profiles(id),
+  creator_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.debt_payments;
