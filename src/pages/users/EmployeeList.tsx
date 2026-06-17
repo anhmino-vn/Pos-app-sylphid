@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { UserProfile, db, handleFirestoreError, OperationType, Department, Role, supabase } from '../../lib/supabase';
 import { collection, onSnapshot, query, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, getDocs, where } from '../../lib/firebaseAdapter';
-import { Users as UsersIcon, Plus, Edit2, Trash2, X, Loader2, CheckCircle2, ShieldCheck, Mail, Phone, Calendar, Building2, UserCog, AlertCircle, Save } from 'lucide-react';
+import { Users as UsersIcon, Plus, Edit2, Trash2, X, Loader2, CheckCircle2, ShieldCheck, Mail, Phone, Calendar, Building2, UserCog, AlertCircle, Save, CreditCard } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatDate } from '../../lib/utils';
 
@@ -27,6 +27,12 @@ export function EmployeeList() {
   const [roleId, setRoleId] = useState('');
   const [position, setPosition] = useState('');
   const [workStatus, setWorkStatus] = useState<'working' | 'probation' | 'resigned' | 'on_leave'>('working');
+  
+  // Advanced HR
+  const [bankName, setBankName] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [bankAccountName, setBankAccountName] = useState('');
+  const [managerId, setManagerId] = useState('');
 
   useEffect(() => {
     const q = query(collection(db, 'users'));
@@ -59,6 +65,10 @@ export function EmployeeList() {
      setRoleId('');
      setPosition('');
      setWorkStatus('working');
+     setBankName('');
+     setBankAccount('');
+     setBankAccountName('');
+     setManagerId('');
      setIsModalOpen(true);
   }
 
@@ -73,6 +83,10 @@ export function EmployeeList() {
      setRoleId(user.roleId || '');
      setPosition(user.position || '');
      setWorkStatus(user.workStatus || 'working');
+     setBankName(user.bankName || '');
+     setBankAccount(user.bankAccount || '');
+     setBankAccountName(user.bankAccountName || '');
+     setManagerId(user.managerId || '');
      setIsModalOpen(true);
   }
 
@@ -84,6 +98,7 @@ export function EmployeeList() {
       if (selectedUser) {
          await updateDoc(doc(db, 'users', selectedUser.uid), {
             name, phone, employeeCode, departmentId, roleId, position, workStatus,
+            bankName, bankAccount, bankAccountName, managerId,
             updatedAt: serverTimestamp()
          });
       } else {
@@ -93,6 +108,7 @@ export function EmployeeList() {
          
          await setDoc(doc(db, 'users', newUser.id), {
             email, name, phone, employeeCode, departmentId, roleId, position, workStatus,
+            bankName, bankAccount, bankAccountName, managerId,
             role: 'staff',
             shopName: 'HQ Spa',
             status: 'active',
@@ -206,11 +222,28 @@ export function EmployeeList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mx-1 gap-4">
-         <div>
-            <h2 className="text-lg font-black text-slate-900 uppercase">Danh sách nhân sự</h2>
-            <p className="text-[10px] sm:text-xs font-medium text-slate-500">Quản lý hồ sơ nhân sự, phòng ban, và trạng thái</p>
+
+      {/* Dashboard Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tổng nhân viên</p>
+            <p className="text-2xl font-black text-slate-900">{users.length}</p>
          </div>
+         <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm flex flex-col justify-center bg-emerald-50/30">
+            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Đang làm việc</p>
+            <p className="text-2xl font-black text-emerald-700">{users.filter(u => u.workStatus === 'working').length}</p>
+         </div>
+         <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm flex flex-col justify-center bg-amber-50/30">
+            <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Nghỉ phép</p>
+            <p className="text-2xl font-black text-amber-700">{users.filter(u => u.workStatus === 'on_leave').length}</p>
+         </div>
+         <div className="bg-white p-4 rounded-2xl border border-rose-100 shadow-sm flex flex-col justify-center bg-rose-50/30">
+            <p className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-1">Đã nghỉ việc</p>
+            <p className="text-2xl font-black text-rose-700">{users.filter(u => u.workStatus === 'resigned').length}</p>
+         </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mx-1 gap-4">
          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {selectedIds.length > 0 && (
                <button onClick={handleBulkDelete} className="flex-1 sm:flex-none justify-center px-4 md:px-5 py-2.5 bg-rose-50 text-rose-600 rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center gap-2 hover:bg-rose-100 transition-all shadow-sm whitespace-nowrap">
@@ -417,6 +450,32 @@ export function EmployeeList() {
                                     <option value="on_leave">Nghỉ phép</option>
                                     <option value="resigned">Đã nghỉ việc</option>
                                  </select>
+                              </div>
+                              <div className="sm:col-span-2">
+                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 block mb-2">Quản lý trực tiếp</label>
+                                 <select value={managerId} onChange={e => setManagerId(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none focus:ring-2 focus:border-blue-500 focus:ring-blue-500/20">
+                                    <option value="">-- Chọn người quản lý --</option>
+                                    {users.filter(u => u.uid !== selectedUser?.uid).map(u => <option key={u.uid} value={u.uid}>{u.name} - {u.position || 'Nhân viên'}</option>)}
+                                 </select>
+                              </div>
+                           </div>
+                        </div>
+
+                        <div className="bg-white p-4 sm:p-6 rounded-[24px] border border-slate-100 shadow-sm space-y-4 sm:space-y-6">
+                           <h4 className="text-xs font-black uppercase text-slate-900 mb-2 sm:mb-4 border-b border-slate-100 pb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> Tài khoản ngân hàng</h4>
+                           
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                              <div>
+                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 block mb-2">Tên ngân hàng</label>
+                                 <input type="text" value={bankName} onChange={e => setBankName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none focus:ring-2 focus:border-blue-500 focus:ring-blue-500/20" placeholder="VD: Vietcombank, Techcombank..." />
+                              </div>
+                              <div>
+                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 block mb-2">Chủ tài khoản</label>
+                                 <input type="text" value={bankAccountName} onChange={e => setBankAccountName(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none focus:ring-2 focus:border-blue-500 focus:ring-blue-500/20" placeholder="NGUYEN VAN A" />
+                              </div>
+                              <div className="sm:col-span-2">
+                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 block mb-2">Số tài khoản</label>
+                                 <input type="text" value={bankAccount} onChange={e => setBankAccount(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none focus:ring-2 focus:border-blue-500 focus:ring-blue-500/20" placeholder="Nhập số tài khoản" />
                               </div>
                            </div>
                         </div>

@@ -27,3 +27,23 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #CBD5E1;
 }
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .overflow-x-auto-md {
+    @media (min-width: 768px) {
+      overflow-x: auto;
+    }
+  }
+  .overflow-y-auto-md {
+    @media (min-width: 768px) {
+      overflow-y: auto;
+    }
+  }
+}

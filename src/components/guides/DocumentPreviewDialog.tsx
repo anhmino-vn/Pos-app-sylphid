@@ -72,7 +72,7 @@ export function DocumentPreviewDialog({ guide, isOpen, canEdit, onClose, onEdit,
     <>
       <AnimatePresence>
         {isOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center p-4 md:p-8">
+          <div className="fixed inset-0 z-[100] flex items-center p-4 md:p-8">
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 

@@ -12,7 +12,7 @@ const tableNameMap: Record<string, string> = {
   'roles': 'roles',
   'categories': 'categories',
   'serviceCategories': 'service_categories',
-  'productCategories': 'product_categories',
+  'productCategories': 'categories',
   'brands': 'brands',
   'productVariants': 'product_variants',
   'serviceCombos': 'service_combos',
@@ -30,7 +30,27 @@ const tableNameMap: Record<string, string> = {
   'healthRecords': 'health_records',
   'treatmentPlans': 'treatment_plans',
   'therapyLogs': 'therapy_logs',
-  'healthEvaluations': 'health_evaluations'
+  'healthEvaluations': 'health_evaluations',
+  'hrShifts': 'hr_shifts',
+  'hrShiftRegistrations': 'hr_shift_registrations',
+  'hrAttendance': 'hr_attendance',
+  'hrCommissionRules': 'hr_commission_rules',
+  'hrPayrollSlips': 'hr_payroll_slips',
+  'hr_attendance': 'hr_attendance',
+  'hr_payroll_slips': 'hr_payroll_slips',
+  'hr_kpi_targets': 'hr_kpi_targets',
+  'hr_kpi_records': 'hr_kpi_records',
+  'hr_leave_requests': 'hr_leave_requests',
+  'hr_evaluations': 'hr_evaluations',
+  'transactions': 'transactions',
+  'debts': 'debts',
+  'budgets': 'budgets',
+  'costAllocations': 'cost_allocations',
+  'internalFunds': 'internal_funds',
+  'internalTransactions': 'internal_transactions',
+  'internalTransactionItems': 'internal_transaction_items',
+  'internalDebts': 'internal_debts',
+  'internalDebtRequests': 'internal_debt_requests'
 };
 
 const mapTableName = (name: string) => tableNameMap[name] || name;
@@ -43,7 +63,13 @@ const convertToSupabaseData = (data: any) => {
   const result: any = {};
   for (const key in data) {
     if (key === 'createdAt' || key === 'updatedAt' || key === 'deletedAt' || key === 'commissionPaidAt') {
-      result[toSnakeCase(key)] = data[key] === 'SERVER_TIMESTAMP' ? new Date().toISOString() : data[key];
+      if (data[key] === 'SERVER_TIMESTAMP') {
+        result[toSnakeCase(key)] = new Date().toISOString();
+      } else if (data[key] && typeof data[key].toDate === 'function') {
+        result[toSnakeCase(key)] = data[key].toDate().toISOString();
+      } else {
+        result[toSnakeCase(key)] = data[key];
+      }
     } else {
       let val = data[key];
       // Supabase UUID columns will throw fatal error if we pass empty string ""

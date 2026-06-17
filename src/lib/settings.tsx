@@ -34,6 +34,16 @@ export interface SystemSettings {
   ui: {
     theme: 'light' | 'dark' | 'system';
     primaryColor: string;
+    autoThemeTimes?: { lightStart: string; darkStart: string };
+    sidebar?: {
+      backgroundColor: string;
+      parentMenuColor: string;
+      childMenuColor: string;
+    };
+    navigation?: any[];
+  };
+  trash?: {
+    autoDeleteDays: number;
   };
 }
 
@@ -68,7 +78,17 @@ export const defaultSettings: SystemSettings = {
   },
   ui: {
     theme: 'light',
-    primaryColor: 'blue'
+    primaryColor: 'blue',
+    autoThemeTimes: { lightStart: '06:00', darkStart: '18:00' },
+    sidebar: {
+      backgroundColor: '#ffffff',
+      parentMenuColor: '#1e293b',
+      childMenuColor: '#64748b'
+    },
+    navigation: []
+  },
+  trash: {
+    autoDeleteDays: 30
   }
 };
 
@@ -96,6 +116,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
            payment: { ...prev.payment, ...data.payment },
            inventory: { ...prev.inventory, ...data.inventory },
            ui: { ...prev.ui, ...data.ui },
+           trash: { ...prev.trash, ...data.trash },
         }));
       }
       setLoading(false);

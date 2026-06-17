@@ -918,12 +918,24 @@ export function LoyaltyDashboard() {
         {/* ════════════════════════════════════════════════════════════════════ */}
         {tab === 'lich_su' && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center gap-3">
-              <div className="relative flex-1 max-w-sm">
+            <div className="p-4 border-b border-slate-100 flex items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" placeholder="Tìm theo tên, mã KH..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
+                <input
+                  type="text"
+                  placeholder="Tìm theo tên, mã KH..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
               </div>
-              <p className="text-xs text-slate-500 font-bold ml-auto">Lịch sử điểm theo thành viên</p>
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Tự động đồng bộ
+                </span>
+                <p className="text-xs text-slate-500 font-bold">Lịch sử điểm theo thành viên</p>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left whitespace-nowrap">
@@ -935,39 +947,133 @@ export function LoyaltyDashboard() {
                     <th className="p-4 text-center">Loại</th>
                     <th className="p-4 text-right">Điểm</th>
                     <th className="p-4 text-right">Số dư</th>
+                    <th className="p-4 text-center">Đơn hàng</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {customers.slice(0, 8).flatMap((c, ci) =>
-                    [
-                      { type: 'earn' as const, desc: 'Tích điểm từ đơn hàng', points: Math.floor((c.points || 0) * 0.1 + 10 * (ci + 1)) },
-                      { type: 'redeem' as const, desc: 'Đổi điểm lấy ưu đãi', points: Math.floor((c.usedPoints || 0) * 0.1 + 5 * (ci + 1)) },
-                    ].map((log, li) => (
-                      <tr key={`${c.id}-${li}`} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
-                        <td className="p-4 text-xs text-slate-500 font-bold">{`0${6 - li}/06/2026`} {`${10 + ci}:${30 + li * 5}`}</td>
+                  {(() => {
+                    // Build real point logs from customers + orders (both already filtered for deletedAt)
+                    const rate = settings.earnRate || 100000;
+                    const earnPts = settings.earnPoints || 1;
+                    const searchQ = searchTerm.toLowerCase();
+
+                    // For each paid order, create an earn log; for usedPoints, create redeem logs
+                    const logs: Array<{
+                      id: string;
+                      customerId: string;
+                      customerName: string;
+                      customerCode: string;
+                      date: string;
+                      time: string;
+                      desc: string;
+                      type: 'earn' | 'redeem';
+                      points: number;
+                      balance: number;
+                      orderId?: string;
+                    }> = [];
+
+                    // Earn logs from real orders
+                    orders
+                      .filter(o => {
+                        const cust = customers.find(c => c.id === (o as any).customerId || c.id === (o as any).customer_id);
+                        return !!cust;
+                      })
+                      .forEach(o => {
+                        const earnedPts = Math.floor(((o as any).totalAmount || (o as any).total_amount || 0) / rate) * earnPts;
+                        if (earnedPts <= 0) return;
+                        const cust = customers.find(c => c.id === (o as any).customerId || c.id === (o as any).customer_id);
+                        if (!cust) return;
+                        const d: Date = (o as any).createdAt?.toDate ? (o as any).createdAt.toDate() : new Date((o as any).createdAt || 0);
+                        logs.push({
+                          id: `earn_${o.id}`,
+                          customerId: cust.id!,
+                          customerName: cust.name,
+                          customerCode: cust.code || cust.id?.slice(-8).toUpperCase() || '',
+                          date: format(d, 'dd/MM/yyyy'),
+                          time: format(d, 'HH:mm'),
+                          desc: `Tích điểm từ đơn hàng #${(o as any).code || (o as any).orderCode || o.id?.slice(-8).toUpperCase()}`,
+                          type: 'earn',
+                          points: earnedPts,
+                          balance: cust.points || 0,
+                          orderId: o.id,
+                        });
+                      });
+
+                    // Redeem logs from customer usedPoints (synthetic per customer)
+                    customers.forEach(c => {
+                      if (!c.usedPoints || c.usedPoints <= 0) return;
+                      logs.push({
+                        id: `redeem_${c.id}`,
+                        customerId: c.id!,
+                        customerName: c.name,
+                        customerCode: c.code || c.id?.slice(-8).toUpperCase() || '',
+                        date: format(new Date(), 'dd/MM/yyyy'),
+                        time: '—',
+                        desc: `Đã sử dụng ${c.usedPoints} điểm đổi ưu đãi`,
+                        type: 'redeem',
+                        points: c.usedPoints,
+                        balance: c.points || 0,
+                        orderId: undefined,
+                      });
+                    });
+
+                    // Sort by date desc, then filter
+                    const filtered = logs
+                      .filter(l => !searchQ || l.customerName.toLowerCase().includes(searchQ) || l.customerCode.toLowerCase().includes(searchQ))
+                      .sort((a, b) => b.id.localeCompare(a.id))
+                      .slice(0, 50);
+
+                    if (filtered.length === 0) return (
+                      <tr>
+                        <td colSpan={7} className="p-12 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Info className="w-8 h-8 text-slate-200" />
+                            <p className="text-sm font-bold text-slate-400">Không có lịch sử điểm</p>
+                            <p className="text-xs text-slate-300">Lịch sử sẽ hiển thị khi khách hàng tích điểm từ đơn hàng</p>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+
+                    return filtered.map(log => (
+                      <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                        <td className="p-4 text-xs text-slate-500 font-bold whitespace-nowrap">{log.date} {log.time}</td>
                         <td className="p-4">
                           <div className="flex items-center gap-2">
-                            <Avatar name={c.name} size="sm" />
+                            <Avatar name={log.customerName} size="sm" />
                             <div>
-                              <p className="text-sm font-bold text-slate-900">{c.name}</p>
-                              <p className="text-[10px] text-slate-500">{c.code || c.id?.slice(-8).toUpperCase()}</p>
+                              <p className="text-sm font-bold text-slate-900">{log.customerName}</p>
+                              <p className="text-[10px] text-slate-500">{log.customerCode}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="p-4 text-sm font-medium text-slate-700">{log.desc}</td>
+                        <td className="p-4 text-sm font-medium text-slate-700 max-w-[220px] truncate">{log.desc}</td>
                         <td className="p-4 text-center">
                           {log.type === 'earn'
                             ? <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black">Cộng</span>
                             : <span className="px-2.5 py-1 bg-rose-50 text-rose-600 border border-rose-200 rounded-full text-[10px] font-black">Trừ</span>
                           }
                         </td>
-                        <td className={cn('p-4 text-right font-black', log.type === 'earn' ? 'text-emerald-600' : 'text-rose-500')}>
-                          {log.type === 'earn' ? '+' : '-'}{log.points}
+                        <td className={cn('p-4 text-right font-black whitespace-nowrap', log.type === 'earn' ? 'text-emerald-600' : 'text-rose-500')}>
+                          {log.type === 'earn' ? '+' : '-'}{log.points.toLocaleString('vi-VN')}
                         </td>
-                        <td className="p-4 text-right font-black text-slate-700">{(c.points || 0) + (log.type === 'earn' ? log.points : 0)}</td>
+                        <td className="p-4 text-right font-black text-slate-700 whitespace-nowrap">{log.balance.toLocaleString('vi-VN')}</td>
+                        <td className="p-4 text-center">
+                          {log.orderId ? (
+                            <button
+                              onClick={() => navigate(`/orders?search=${log.orderId}`)}
+                              className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Xem đơn hàng"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <span className="text-slate-300 text-xs">—</span>
+                          )}
+                        </td>
                       </tr>
-                    ))
-                  )}
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>

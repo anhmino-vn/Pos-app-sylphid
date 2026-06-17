@@ -58,6 +58,16 @@ export function HealthRecordForm({ recordId, onClose }: Props) {
   }, [recordId]);
 
   const handleCustomerSelect = (customer: Customer) => {
+    let formattedDate = customer.birthDate || '';
+    if (formattedDate && formattedDate.includes('/')) {
+       const parts = formattedDate.split('/');
+       if (parts.length === 3) {
+          formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+       }
+    } else if (formattedDate && !formattedDate.includes('-')) {
+       // if it's some other format, just fallback, but type="date" requires YYYY-MM-DD
+    }
+
     setFormData(prev => ({
       ...prev,
       customerId: customer.id,
@@ -65,7 +75,7 @@ export function HealthRecordForm({ recordId, onClose }: Props) {
       customerPhone: customer.phone,
       customerEmail: customer.email,
       customerAddress: customer.address,
-      dateOfBirth: customer.birthDate,
+      dateOfBirth: formattedDate,
       gender: (customer.gender as any) || 'female'
     }));
     setCustomerSearch('');
@@ -104,10 +114,17 @@ export function HealthRecordForm({ recordId, onClose }: Props) {
       // Handle file uploads
       if (filesToUpload.length > 0) {
          toast.loading('Đang tải file lên...', { id: 'upload' });
-         const urls = await uploadHealthFiles(filesToUpload, 'attachments');
-         const newAttachments = filesToUpload.map((f, i) => ({ name: f.name, type: f.type, url: urls[i] }));
-         attachmentUrls = [...attachmentUrls, ...newAttachments];
-         toast.dismiss('upload');
+         try {
+            const urls = await uploadHealthFiles(filesToUpload, 'attachments');
+            const newAttachments = filesToUpload.map((f, i) => ({ name: f.name, type: f.type, url: urls[i] }));
+            attachmentUrls = [...attachmentUrls, ...newAttachments];
+            toast.dismiss('upload');
+            toast.success('Đã tải file lên');
+         } catch (uploadError: any) {
+            console.error('Upload Error:', uploadError);
+            toast.dismiss('upload');
+            toast.error('Lỗi tải file đính kèm (Có thể chưa tạo Bucket health-assets). Vẫn tiếp tục lưu hồ sơ...');
+         }
       }
 
       const dataToSave = {
@@ -135,7 +152,7 @@ export function HealthRecordForm({ recordId, onClose }: Props) {
       onClose();
     } catch (error: any) {
       toast.dismiss('upload');
-      toast.error(`Lỗi: ${error.message}`);
+      toast.error(`Lỗi lưu hồ sơ: ${error.message}`);
     } finally {
       setLoading(false);
     }

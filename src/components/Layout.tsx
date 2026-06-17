@@ -32,11 +32,15 @@ import {
   Star,
   Clock
 } from "lucide-react";
-import { supabase, handleSupabaseError } from '../lib/supabase';
+import { supabase, db, handleSupabaseError } from '../lib/supabase';
+import { doc, onSnapshot } from '../lib/firebaseAdapter';
 import { cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
-import { useAuth } from "../App";
 import { Toaster } from "react-hot-toast";
+import { getIcon } from "../lib/icons";
+import { defaultNavItems } from "../lib/navigation";
+import { useAuth } from "../App";
+import { useAutoCleanup } from "../lib/useAutoCleanup";
 
 export function Layout() {
   const navigate = useNavigate();
@@ -56,8 +60,12 @@ export function Layout() {
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('light');
   const [menuSearchQuery, setMenuSearchQuery] = useState("");
   
-  // Realtime Badges
+  // Realtime Badges & Settings
   const [badges, setBadges] = useState<{ orders: number; customers: number }>({ orders: 0, customers: 0 });
+  const [systemSettings, setSystemSettings] = useState<any>(null);
+
+  // Auto Cleanup background task
+  useAutoCleanup(systemSettings);
 
   // Notifications
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -74,8 +82,6 @@ export function Layout() {
     const saved = localStorage.getItem("favorites");
     return saved ? JSON.parse(saved) : ['/orders/create', '/customers'];
   });
-  const [recents, setRecents] = useState<{path: string, name: string}[]>([]);
-
   // Recent path tracking moved below allNavItems declaration
 
   // Save Settings
@@ -108,7 +114,16 @@ export function Layout() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, fetchCounts)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    const unsubSettings = onSnapshot(doc(db, 'system_configs', 'global'), (docSnap) => {
+       if (docSnap.exists()) {
+          setSystemSettings(docSnap.data());
+       }
+    });
+
+    return () => { 
+      supabase.removeChannel(channel); 
+      unsubSettings();
+    };
   }, []);
 
   const toggleSubmenu = (name: string, e: React.MouseEvent) => {
@@ -128,6 +143,50 @@ export function Layout() {
     navigate("/login");
   };
 
+  // Auto Theme Logic
+  useEffect(() => {
+    if (!systemSettings?.ui) return;
+    
+    const applyTheme = () => {
+      const configTheme = systemSettings.ui.theme;
+      if (configTheme === 'system') {
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMin = now.getMinutes();
+        const currentTime = currentHour * 60 + currentMin;
+
+        const lightStart = systemSettings.ui.autoThemeTimes?.lightStart || '06:00';
+        const darkStart = systemSettings.ui.autoThemeTimes?.darkStart || '18:00';
+
+        const [lightH, lightM] = lightStart.split(':').map(Number);
+        const [darkH, darkM] = darkStart.split(':').map(Number);
+        
+        const lightTime = lightH * 60 + lightM;
+        const darkTime = darkH * 60 + darkM;
+
+        let isDark = false;
+        if (lightTime < darkTime) {
+          // Normal case: light is 06:00, dark is 18:00
+          // Dark if before lightTime OR after darkTime
+          isDark = currentTime < lightTime || currentTime >= darkTime;
+        } else {
+          // Night shift case: light is 18:00, dark is 06:00
+          // Dark if between darkTime and lightTime
+          isDark = currentTime >= darkTime && currentTime < lightTime;
+        }
+
+        setTheme(isDark ? 'dark' : 'light');
+      } else {
+        setTheme(configTheme || 'light');
+      }
+    };
+
+    applyTheme();
+    // Re-check every minute if system theme is used
+    const interval = setInterval(applyTheme, 60000);
+    return () => clearInterval(interval);
+  }, [systemSettings?.ui]);
+
   // RBAC Filtering Logic
   const role = profile?.role || 'admin';
   const hasPermission = (module: string) => {
@@ -137,162 +196,12 @@ export function Layout() {
     if (role === 'kho') return ['KHO', 'SẢN PHẨM & DỊCH VỤ'].includes(module);
     return true; // Default fallback
   };
-
-  const allNavItems = [
-    { name: "TỔNG QUAN", icon: LayoutDashboard, path: "/", module: "Dashboard" },
-    {
-      name: "POS BÁN HÀNG",
-      icon: ShoppingCart,
-      path: "/orders",
-      module: "POS BÁN HÀNG",
-      badge: badges.orders,
-      subItems: [
-        { name: "Tạo đơn hàng", path: "/orders/create" },
-        { name: "Hóa đơn", path: "/orders" },
-        { name: "Thanh toán", path: "/orders/payments" },
-        { name: "Công nợ", path: "/finances/debts" },
-      ],
-    },
-    {
-      name: "CRM KHÁCH HÀNG",
-      icon: Users,
-      path: "/customers",
-      module: "CRM KHÁCH HÀNG",
-      badge: badges.customers,
-      subItems: [
-        { name: "Khách hàng", path: "/customers" },
-        { name: "Referral", path: "/customers/referrers" },
-        { name: "Thành viên", path: "/customers/loyalty" },
-      ],
-    },
-    {
-      name: "LỊCH HẸN",
-      icon: Calendar,
-      path: "/appointments",
-      module: "LỊCH HẸN",
-      subItems: [
-        { name: "Danh sách lịch hẹn", path: "/appointments" },
-        { name: "Lịch hôm nay", path: "/appointments/calendar" },
-        { name: "Lịch nhân viên", path: "/appointments/staff" },
-        { name: "Nhân viên", path: "/appointments/staff-config" },
-        { name: "Phòng dịch vụ", path: "/appointments/rooms" },
-      ],
-    },
-    {
-      name: "SỨC KHỎE & LIỆU TRÌNH",
-      icon: HeartPulse,
-      path: "/health",
-      module: "SỨC KHỎE",
-      subItems: [
-        { name: "Hồ sơ sức khỏe", path: "/health/records" },
-        { name: "Liệu trình", path: "/health/treatments" },
-        { name: "Nhật ký trị liệu", path: "/health/logs" },
-        { name: "Kết quả đánh giá", path: "/health/evaluations" },
-      ],
-    },
-    {
-      name: "SẢN PHẨM & DỊCH VỤ",
-      icon: Sparkles,
-      path: "/products",
-      module: "SẢN PHẨM & DỊCH VỤ",
-      subItems: [
-        { name: "Sản phẩm", path: "/products" },
-        { name: "Dịch vụ", path: "/services" },
-        { name: "Danh mục", path: "/products/categories" },
-        { name: "Cấu hình", path: "/products/settings" },
-      ],
-    },
-    {
-      name: "KHO",
-      icon: Warehouse,
-      path: "/inventory",
-      module: "KHO",
-      subItems: [
-        { name: "Kho hàng", path: "/inventory/stock" },
-        { name: "Giao dịch kho", path: "/inventory/transactions" },
-        { name: "Nhà cung cấp", path: "/inventory/suppliers" },
-      ],
-    },
-    {
-      name: "NHÂN SỰ",
-      icon: UserCog,
-      path: "/users",
-      module: "Nhân sự",
-      subItems: [
-        { name: "Nhân viên", path: "/users" },
-        { name: "Phân quyền", path: "/users/roles" },
-        { name: "Chấm công", path: "/users/timesheets" },
-        { name: "Lương thưởng", path: "/users/payroll" },
-      ],
-    },
-    {
-      name: "MARKETING",
-      icon: Tags,
-      path: "/marketing",
-      module: "MARKETING",
-      subItems: [
-        { name: "Voucher", path: "/customers/vouchers" },
-        { name: "Coupon", path: "/marketing/coupons" },
-        { name: "Membership", path: "/customers/loyalty-settings" },
-        { name: "Affiliate", path: "/customers/commissions" },
-      ],
-    },
-    {
-      name: "TÀI CHÍNH",
-      icon: DollarSign,
-      path: "/finances",
-      module: "TÀI CHÍNH",
-      subItems: [
-        { name: "Thu", path: "/finances/incomes" },
-        { name: "Chi", path: "/finances/expenses" },
-        { name: "Công nợ", path: "/finances/debts" },
-        { name: "Sổ quỹ", path: "/finances/cashbook" },
-      ],
-    },
-    {
-      name: "BÁO CÁO",
-      icon: BarChart2,
-      path: "/reports",
-      module: "BÁO CÁO",
-      subItems: [
-        { name: "Dashboard", path: "/reports" },
-        { name: "Doanh thu", path: "/reports/revenue" },
-        { name: "Sản phẩm", path: "/reports/products" },
-        { name: "Dịch vụ", path: "/reports/services" },
-        { name: "Nhân viên", path: "/reports/staff" },
-        { name: "Referral", path: "/reports/referral" },
-        { name: "Thành viên", path: "/reports/loyalty" },
-      ],
-    },
-    {
-      name: "HỆ THỐNG",
-      icon: Settings,
-      path: "/settings",
-      module: "Hệ thống",
-      subItems: [
-        { name: "Cài đặt chung", path: "/settings/store" },
-        { name: "Cấu hình thanh toán", path: "/settings/payment" },
-        { name: "Cấu hình hóa đơn", path: "/settings/invoice" },
-        { name: "Thùng rác", path: "/settings/trash" },
-        { name: "Nhật ký", path: "/settings/logs" },
-        { name: "Sao lưu", path: "/settings/backup" },
-        { name: "Khôi phục", path: "/settings/restore" },
-      ],
-    },
-  ];
-
-  useEffect(() => {
-    // Record recent path
-    setRecents(prev => {
-      const currentPath = location.pathname;
-      const currentName = allNavItems.flatMap(i => i.subItems || [i]).find(i => i.path === currentPath)?.name || currentPath;
-      const filtered = prev.filter(p => p.path !== currentPath);
-      const updated = [{ path: currentPath, name: currentName }, ...filtered].slice(0, 5);
-      return updated;
-    });
-  }, [location.pathname]);
-
-  const filteredNavItems = allNavItems.filter(item => hasPermission(item.module));
+  const rawNavItems = systemSettings?.ui?.navigation?.length ? systemSettings.ui.navigation : defaultNavItems;
+  const allNavItems = rawNavItems.map((item: any) => ({
+    ...item,
+    icon: getIcon(item.iconName)
+  }));
+  const filteredNavItems = allNavItems.filter((item: any) => hasPermission(item.module));
 
   // Menu Search Filter
   const displayedNavItems = useMemo(() => {
@@ -327,24 +236,33 @@ export function Layout() {
       {/* Sidebar Layout */}
       <aside
         className={cn(
-          "fixed md:relative z-[70] flex flex-col h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 ease-in-out shadow-2xl md:shadow-none",
+          "fixed md:relative z-[70] flex flex-col h-full border-r border-slate-200 dark:border-slate-800 transition-all duration-300 ease-in-out shadow-2xl md:shadow-none shrink-0",
           // Mobile Drawer
           isMobileMenuOpen ? "translate-x-0 w-[85%] max-w-[320px]" : "-translate-x-full md:translate-x-0",
           // Desktop & Tablet
           "md:translate-x-0",
           isSidebarOpen ? "md:w-[240px] xl:w-[280px]" : "md:w-[72px]"
         )}
+        style={{
+          backgroundColor: systemSettings?.ui?.sidebar?.backgroundColor || undefined
+        }}
       >
         {/* Header / Logo */}
         <div className="h-[72px] flex items-center justify-between px-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center bg-blue-600 text-white font-black shadow-lg shadow-blue-500/30">
-               <span className="text-xl">S</span>
-            </div>
+            {systemSettings?.business?.logo ? (
+              <div className="w-10 h-10 rounded-xl shrink-0 overflow-hidden shadow-lg shadow-blue-500/30 bg-slate-50 flex items-center justify-center p-1">
+                <img src={systemSettings.business.logo} alt="Logo" className="w-full h-full object-contain" />
+              </div>
+            ) : (
+              <div className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center bg-blue-600 text-white font-black shadow-lg shadow-blue-500/30">
+                 <span className="text-xl">S</span>
+              </div>
+            )}
             {(isSidebarOpen || isMobileMenuOpen) && (
               <div className="flex flex-col whitespace-nowrap min-w-0">
                  <span className="font-black text-lg tracking-tight text-slate-900 dark:text-white leading-tight">
-                   Sylphid
+                   {systemSettings?.business?.name || 'Sylphid'}
                  </span>
                  <span className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase">Enterprise</span>
               </div>
@@ -366,34 +284,7 @@ export function Layout() {
           </button>
         </div>
 
-        {/* User Info & Theme Toggle */}
-        {(isSidebarOpen || isMobileMenuOpen) && (
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800">
-             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 overflow-hidden">
-                   <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden ring-2 ring-white dark:ring-slate-800 shrink-0">
-                     <img src={`https://ui-avatars.com/api/?name=${profile?.name || user?.email}&background=0D8ABC&color=fff&bold=true`} alt="Avatar" className="w-full h-full object-cover" />
-                   </div>
-                   <div className="flex flex-col min-w-0">
-                     <span className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{profile?.name || 'Admin User'}</span>
-                     <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">{profile?.role || 'Admin'}</span>
-                   </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                   {['light', 'dark', 'auto'].map((t) => (
-                      <button 
-                         key={t}
-                         onClick={() => setTheme(t as any)}
-                         className={cn("p-1 rounded text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors", theme === t && "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30")}
-                         title={`Theme: ${t}`}
-                      >
-                         {t === 'light' ? <Sun size={12}/> : t === 'dark' ? <Moon size={12}/> : <Monitor size={12}/>}
-                      </button>
-                   ))}
-                </div>
-             </div>
-          </div>
-        )}
+
 
         {/* Menu Search */}
         {(isSidebarOpen || isMobileMenuOpen) && (
@@ -441,18 +332,7 @@ export function Layout() {
                    })}
                 </div>
               )}
-              {recents.length > 0 && (
-                <div className="mb-4">
-                   <div className="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-2">
-                      <Clock size={10} /> Gần đây
-                   </div>
-                   {recents.map(r => (
-                      <NavLink key={r.path} to={r.path} className="flex items-center px-3 py-1.5 rounded-lg text-[11px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800">
-                         {r.name}
-                      </NavLink>
-                   ))}
-                </div>
-              )}
+
               <div className="border-t border-slate-100 dark:border-slate-800 my-2 mx-2"></div>
             </>
           )}
@@ -483,7 +363,7 @@ export function Layout() {
                       <div className="flex items-center gap-3">
                         <item.icon className={cn("w-5 h-5 shrink-0 transition-colors", isExpanded ? "text-blue-600" : "text-slate-500")} />
                         {(isSidebarOpen || isMobileMenuOpen) && (
-                          <span className={cn("font-bold text-sm tracking-tight truncate", isExpanded ? "text-blue-600" : "text-slate-700 dark:text-slate-300")}>{item.name}</span>
+                          <span className={cn("font-bold text-sm tracking-tight truncate", isExpanded ? "text-blue-600" : "dark:text-slate-300")} style={{ color: isExpanded ? undefined : (systemSettings?.ui?.sidebar?.parentMenuColor || undefined) }}>{item.name}</span>
                         )}
                       </div>
                       {(isSidebarOpen || isMobileMenuOpen) && (
@@ -518,7 +398,7 @@ export function Layout() {
                               {({ isActive }) => (
                                 <>
                                   {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-r-full" />}
-                                  <span className="relative z-10">{subItem.name}</span>
+                                  <span className="relative z-10" style={{ color: isActive ? undefined : (systemSettings?.ui?.sidebar?.childMenuColor || undefined) }}>{subItem.name}</span>
                                   <button 
                                      onClick={(e) => toggleFavorite(e, subItem.path)}
                                      className={cn("opacity-0 group-hover:opacity-100 transition-opacity z-10", favorites.includes(subItem.path) ? "text-amber-400 opacity-100" : "text-slate-300 hover:text-amber-400")}
@@ -593,23 +473,88 @@ export function Layout() {
               <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 -ml-2 text-slate-500">
                  <Menu size={24} />
               </button>
-              <div className="font-black text-lg text-slate-800 dark:text-white">Sylphid</div>
+              <div className="font-black text-lg text-slate-800 dark:text-white">
+                {systemSettings?.business?.name || 'Sylphid'}
+              </div>
            </div>
            {/* Add global search or notifications for mobile here if needed */}
         </header>
 
-        {/* Desktop Header Top bar (optional, can be kept minimal) */}
-        <div className="hidden md:flex h-[72px] bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-6 shrink-0 z-10 shadow-sm">
-           <div className="text-sm font-semibold text-slate-500 uppercase tracking-widest">{allNavItems.flatMap(i => i.subItems || [i]).find(i => i.path === location.pathname)?.name || 'Dashboard'}</div>
-           <div className="flex items-center gap-4">
-              <button className="relative p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                 <Bell size={20} />
-                 {badges.orders > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white dark:border-slate-900"></span>}
-              </button>
+        {/* Desktop Header Top bar */}
+        <div className="hidden md:flex h-[72px] bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 items-center justify-between px-6 shrink-0 z-10 shadow-sm gap-4">
+           {/* Left: Module Title */}
+           <div className="text-lg font-black text-slate-800 dark:text-slate-100 min-w-[200px] flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                <LayoutDashboard size={18} />
+              </div>
+              {allNavItems.flatMap(i => i.subItems || [i]).find(i => i.path === location.pathname)?.name || 'Tổng quan'}
+           </div>
+           
+           {/* Center: Search & Quick Actions */}
+           <div className="flex-1 max-w-2xl flex items-center gap-4">
+              {/* Search Box */}
+              <div className="relative flex-1">
+                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                 <input 
+                   type="text" 
+                   placeholder="Tìm kiếm nhanh khách hàng, đơn hàng..." 
+                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100 focus:bg-white dark:bg-slate-800 dark:hover:bg-slate-700/80 dark:focus:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 transition-all dark:text-white outline-none shadow-inner"
+                 />
+                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <span className="text-[10px] font-black text-slate-400 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded shadow-sm border border-slate-200 dark:border-slate-700">Ctrl</span>
+                    <span className="text-[10px] font-black text-slate-400 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded shadow-sm border border-slate-200 dark:border-slate-700">K</span>
+                 </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex items-center gap-2">
+                 <button onClick={() => navigate('/orders/create')} className="flex items-center gap-2 px-3 py-2.5 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-xl font-bold text-sm transition-colors whitespace-nowrap">
+                   <Plus size={16} /> <span className="hidden lg:inline">Tạo đơn</span>
+                 </button>
+                 <button onClick={() => navigate('/appointments/new')} className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 rounded-xl font-bold text-sm transition-colors whitespace-nowrap">
+                   <Calendar size={16} /> <span className="hidden lg:inline">Đặt lịch</span>
+                 </button>
+              </div>
+           </div>
+
+           {/* Right: Notifications, Theme, User */}
+           <div className="flex items-center gap-4 min-w-max">
+              <div className="flex items-center gap-2 pr-4 border-r border-slate-200 dark:border-slate-700">
+                 {/* Theme Toggle */}
+                 <div className="hidden lg:flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                    {['light', 'dark', 'auto'].map((t) => (
+                       <button 
+                          key={t}
+                          onClick={() => setTheme(t as any)}
+                          className={cn("p-1.5 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors", theme === t && "bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-400")}
+                          title={`Theme: ${t}`}
+                       >
+                          {t === 'light' ? <Sun size={14}/> : t === 'dark' ? <Moon size={14}/> : <Monitor size={14}/>}
+                       </button>
+                    ))}
+                 </div>
+                 
+                 {/* Notifications */}
+                 <button className="relative p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors ml-2">
+                    <Bell size={20} />
+                    {badges.orders > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white dark:border-slate-900"></span>}
+                 </button>
+              </div>
+
+              {/* User Profile */}
+              <div className="flex items-center gap-3">
+                 <div className="flex flex-col text-right">
+                   <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">{profile?.name || 'Admin User'}</span>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">{profile?.role || 'Admin'}</span>
+                 </div>
+                 <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden ring-2 ring-white dark:ring-slate-800 shrink-0 shadow-sm cursor-pointer hover:ring-blue-500 transition-all">
+                   <img src={`https://ui-avatars.com/api/?name=${profile?.name || user?.email}&background=0D8ABC&color=fff&bold=true`} alt="Avatar" className="w-full h-full object-cover" />
+                 </div>
+              </div>
            </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8">
            <Outlet />
         </div>
       </main>

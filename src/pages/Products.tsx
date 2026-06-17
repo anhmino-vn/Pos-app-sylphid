@@ -9,10 +9,11 @@ import {
   collection, 
   onSnapshot, 
   deleteDoc, 
-  doc, 
   query,
   orderBy,
-  where
+  where,
+  updateDoc,
+  doc
 } from '../lib/firebaseAdapter';
 import { db, Product, ProductCategory, Brand, handleFirestoreError, OperationType } from '../lib/supabase';
 import { 
@@ -61,7 +62,7 @@ export function Products() {
   useEffect(() => {
     const qProds = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
     const unsubscribeProds = onSnapshot(qProds, (snapshot: any) => {
-      const prods = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Product));
+      const prods = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Product)).filter(p => !(p as any).is_deleted && !p.deletedAt && !(p as any).deleted_at);
       setProducts(prods);
       setLoading(false);
     }, (error: any) => {
@@ -87,7 +88,11 @@ export function Products() {
 
   const handleDelete = async () => {
     try {
-      await deleteDoc(doc(db, 'products', deleteConfirm.id));
+      await updateDoc(doc(db, 'products', deleteConfirm.id), {
+        is_deleted: true,
+        deleted_by: profile?.id || null,
+        deleted_at: serverTimestamp()
+      });
       toast.success('Xóa sản phẩm thành công');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'products');
@@ -198,7 +203,7 @@ export function Products() {
       },
       {
         accessorKey: 'sku',
-        header: 'SKU',
+        header: 'Mã Sản Phẩm',
         cell: ({ row }) => <span className="font-mono text-slate-500 text-xs">{row.getValue('sku') || '-'}</span>
       },
       {
@@ -265,7 +270,7 @@ export function Products() {
           <div className="flex items-center justify-end gap-2">
             {canEdit && (
               <button 
-                onClick={(e) => { e.stopPropagation(); setEditingId(row.original.id!); setInitialData(undefined); setIsModalOpen(true); }}
+                onClick={(e) => { e.stopPropagation(); setEditingId(row.original.id!); setInitialData(row.original); setIsModalOpen(true); }}
                 className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors"
                 title="Chỉnh sửa"
               >
@@ -403,7 +408,7 @@ export function Products() {
             data={filteredProducts} 
             onRowClick={(row) => {
                setEditingId(row.id!);
-               setInitialData(undefined);
+               setInitialData(row.original);
                setIsModalOpen(true);
             }}
           />

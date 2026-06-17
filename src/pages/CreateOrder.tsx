@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
+import { logActivity } from '../lib/activityUtils';
 
 interface CartItem {
   id: string;
@@ -220,16 +221,33 @@ export function CreateOrder() {
   const totalAmount = totalBeforePoints - pointsDiscountAmount;
 
   // Actions
-  const addToCart = (item: Product | Service, type: 'product' | 'service') => {
+  const addToCart = (item: Product | Service, type: string) => {
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+      
+      const itemSalePrice = Number((item as any).salePrice) || 0;
+      const itemListPrice = Number((item as any).listPrice) || 0;
+      const itemFallbackPrice = Number((item as any).price) || 0;
+      
+      const isProduct = type === 'product' || type === 'products';
+      
+      let finalPrice = 0;
+      let finalOriginalPrice = 0;
+      
+      if (isProduct) {
+         finalPrice = itemSalePrice > 0 ? itemSalePrice : (itemListPrice > 0 ? itemListPrice : itemFallbackPrice);
+         finalOriginalPrice = itemListPrice > 0 ? itemListPrice : (itemSalePrice > 0 ? itemSalePrice : itemFallbackPrice);
+      } else {
+         finalPrice = itemFallbackPrice;
+         finalOriginalPrice = itemFallbackPrice;
+      }
+      
       return [...prev, {
-        id: item.id!, type, name: item.name, 
-        price: type === 'product' ? (item as any).salePrice : (item as any).price,
-        originalPrice: type === 'product' ? ((item as any).listPrice || (item as any).salePrice) : (item as any).price,
-        sku: type === 'product' ? (item as any).sku : (item as any).code, 
-        stock: type === 'product' ? (item as any).stock : undefined,
+        id: item.id!, type: isProduct ? 'product' : 'service', name: item.name, 
+        price: finalPrice, originalPrice: finalOriginalPrice,
+        sku: isProduct ? (item as any).sku : (item as any).code, 
+        stock: isProduct ? (item as any).stock : undefined,
         image: item.images && item.images.length > 0 ? item.images[0] : undefined, quantity: 1
       }];
     });
@@ -256,14 +274,6 @@ export function CreateOrder() {
     try {
       const customer = customers.find(c => c.id === selectedCustomerId);
       const referrer = customers.find(c => c.id === selectedReferrerId);
-      const staff = staffList.find(s => s.id === selectedStaffId);
-      
-      const settings = (window as any).systemSettings || {};
-      const staffCommissionRate = settings.default_commission_rate || 0;
-      const referralCommissionRate = settings.default_referral_rate || 0;
-      
-      const staffCommission = selectedStaffId ? (subtotal * staffCommissionRate) / 100 : 0;
-      const referralCommission = selectedReferrerId ? (subtotal * referralCommissionRate) / 100 : 0;
       
       const orderData = {
         customerId: selectedCustomerId,
@@ -271,10 +281,6 @@ export function CreateOrder() {
         customerPhone: customer?.phone || '',
         referredById: selectedReferrerId,
         referredByName: referrer?.name || '',
-        staffId: selectedStaffId,
-        staffName: staff?.name || '',
-        staffCommission,
-        referralCommission,
         items: cart,
         subtotal,
         discount: discountAmount,
@@ -287,6 +293,19 @@ export function CreateOrder() {
       };
 
       const docRef = await addDoc(collection(db, 'orders'), orderData);
+      
+      try {
+         await logActivity(
+            { uid: profile?.id || profile?.uid || '', email: profile?.email || '', name: profile?.name || profile?.displayName || '' },
+            'Đơn hàng',
+            'Tạo đơn hàng',
+            `Đã tạo đơn hàng mới cho khách: ${orderData.customerName || 'Khách lẻ'}`,
+            'info',
+            { ...orderData, id: docRef.id } // newData
+         );
+      } catch (e) {
+         console.error('Failed to log activity', e);
+      }
       
       if (status === 'paid') {
          setActivePaymentOrderId(docRef.id);
@@ -317,8 +336,7 @@ export function CreateOrder() {
             status: 'paid',
             paymentMethod,
             amountGiven: paymentMethod === 'cash' ? amountGiven : totalAmount,
-            changeGiven: paymentMethod === 'cash' ? amountGiven - totalAmount : 0,
-            pointsEarned
+            changeGiven: paymentMethod === 'cash' ? amountGiven - totalAmount : 0
          };
          await updateDoc(doc(db, 'orders', activePaymentOrderId), updateData);
 
@@ -343,6 +361,20 @@ export function CreateOrder() {
                 }
              }
          }
+         
+         try {
+             await logActivity(
+                { uid: profile?.id || profile?.uid || '', email: profile?.email || '', name: profile?.name || profile?.displayName || '' },
+                'Đơn hàng',
+                'Thanh toán đơn hàng',
+                `Đã thanh toán đơn hàng #${activePaymentOrderId.slice(-6).toUpperCase()} với số tiền ${formatCurrency(totalAmount)} qua ${paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}`,
+                'info',
+                { orderId: activePaymentOrderId, amount: totalAmount, method: paymentMethod }
+             );
+         } catch(e) {
+             console.error('Log error', e);
+         }
+
          toast.success('Thanh toán thành công');
          setIsPaymentPopupOpen(false);
          setActivePaymentOrderId(null);
@@ -556,26 +588,73 @@ export function CreateOrder() {
             </div>
             
             {/* Meta Order Info */}
-            <div className="flex items-center gap-3 mt-3">
-               <div className="flex-1 relative">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+               {/* Referrer Selector */}
+               <div className="relative" ref={referrerDropdownRef}>
+                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400"><UserIcon size={12} /></div>
+                  <input 
+                     type="text"
+                     className="w-full text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg pl-7 pr-14 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                     placeholder="Người giới thiệu..."
+                     value={referrerSearchTerm}
+                     onChange={(e) => {
+                        setReferrerSearchTerm(e.target.value); setIsReferrerDropdownOpen(true);
+                        if (selectedReferrerId) setSelectedReferrerId(null);
+                     }}
+                     onFocus={() => setIsReferrerDropdownOpen(true)}
+                  />
+                  {referrerSearchTerm ? (
+                     <button onClick={() => { setReferrerSearchTerm(''); setSelectedReferrerId(null); }} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"><X size={12}/></button>
+                  ) : (
+                     <button onClick={() => setIsCreateCustomerModalOpen(true)} className="absolute inset-y-0 right-0 px-3 text-[9px] font-black text-blue-600 hover:text-blue-800 hover:bg-blue-100 uppercase tracking-widest flex items-center bg-blue-50/50 rounded-r-lg border-l border-slate-200">Thêm</button>
+                  )}
+                  <AnimatePresence>
+                     {isReferrerDropdownOpen && (
+                     <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="absolute top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-40 overflow-y-auto custom-scrollbar">
+                        {filteredReferrers.length === 0 ? (
+                           <div className="p-3 text-[10px] text-slate-500 text-center font-medium">Không tìm thấy người giới thiệu</div>
+                        ) : (
+                           filteredReferrers.map(c => (
+                           <div key={c.id} className="px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 transition-colors"
+                                 onClick={() => { 
+                                 setSelectedReferrerId(c.id!); 
+                                 setReferrerSearchTerm(`${c.name} - ${c.phone}`); 
+                                 setIsReferrerDropdownOpen(false); 
+                                 }}>
+                              <div className="font-bold text-[11px] text-slate-800">{c.name}</div>
+                              <div className="text-[10px] text-slate-500">{c.phone}</div>
+                           </div>
+                           ))
+                        )}
+                     </motion.div>
+                     )}
+                  </AnimatePresence>
+               </div>
+
+               {/* Date Picker */}
+               <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400"><CalendarIcon size={12} /></div>
                   <input type="datetime-local" value={orderDate} onChange={e => setOrderDate(e.target.value)} className="w-full text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"/>
-               </div>
-               <div className="flex-1 bg-slate-100 rounded-lg py-1.5 px-3 text-xs font-bold text-slate-500 truncate border border-slate-200 flex items-center gap-1.5">
-                  <UserIcon size={12}/> {profile?.name || 'Nhân viên'}
                </div>
             </div>
          </div>
 
          {/* Cart Items (Scrollable Middle) */}
-         <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-white">
+         <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-white flex flex-col">
+            {cart.length > 0 && (
+               <div className="flex items-center justify-between shrink-0 mb-1">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Giỏ hàng ({cart.length})</span>
+                  <button onClick={() => setCart([])} className="text-[10px] font-bold text-red-500 hover:text-red-700 hover:underline">Xóa hết</button>
+               </div>
+            )}
             {cart.length === 0 ? (
-               <div className="flex flex-col items-center justify-center h-full text-slate-300">
+               <div className="flex flex-col items-center justify-center flex-1 text-slate-300">
                   <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-3"><ShoppingCart size={32} className="text-slate-300" /></div>
                   <p className="text-sm font-semibold text-slate-400">Giỏ hàng đang trống</p>
                </div>
             ) : (
-               cart.map(item => (
+               <div className="space-y-3">
+                  {cart.map(item => (
                   <div key={item.id} className="flex gap-3 p-3 bg-white border border-slate-200 rounded-2xl relative group hover:border-blue-300 hover:shadow-md transition-all">
                      <button onClick={() => removeFromCart(item.id)} className="absolute -top-2 -left-2 w-5 h-5 bg-red-100 text-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10"><X size={10} strokeWidth={3} /></button>
                      <div className="w-14 h-14 bg-slate-50 rounded-xl border border-slate-100 p-1 flex-shrink-0">
@@ -616,7 +695,8 @@ export function CreateOrder() {
                         </div>
                      </div>
                   </div>
-               ))
+               ))}
+               </div>
             )}
          </div>
 

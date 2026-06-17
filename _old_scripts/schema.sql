@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS public.products (
   images JSONB DEFAULT '[]', -- Array of image URLs
   category_id UUID REFERENCES public.categories(id),
   status TEXT CHECK (status IN ('active', 'out_of_stock', 'discontinued')) DEFAULT 'active',
+  is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES public.user_profiles(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -93,6 +96,9 @@ CREATE TABLE IF NOT EXISTS public.customers (
   last_purchase_date TIMESTAMPTZ,
   tier TEXT CHECK (tier IN ('bronze', 'silver', 'gold', 'diamond')) DEFAULT 'bronze',
   in_charge_staff_id UUID REFERENCES public.user_profiles(id),
+  is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES public.user_profiles(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -326,3 +332,18 @@ CREATE TABLE IF NOT EXISTS public.debt_payments (
 );
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.debt_payments;
+
+-- 20. System Configs Table
+CREATE TABLE IF NOT EXISTS public.system_configs (
+  id TEXT PRIMARY KEY,
+  business JSONB,
+  invoice JSONB,
+  payment JSONB,
+  inventory JSONB,
+  referral JSONB,
+  ui JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.system_configs;

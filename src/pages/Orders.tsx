@@ -52,9 +52,10 @@ import {
   Eye,
   FileEdit,
   MoreHorizontal,
-  Download,
   FileText,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertCircle,
+  Download
 } from 'lucide-react';
 
 interface CartItem {
@@ -71,18 +72,20 @@ interface CartItem {
 import { formatCurrency, formatDate, cn, generateExportFileName, parseSafeDate } from '../lib/utils';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { PaymentModal } from '../components/PaymentModal';
 import { useAuth } from '../App';
 import { useSettings } from '../lib/settings';
 import { useDateFilterStore } from '../store/useDateFilterStore';
 
-import { DateFilter, DateRange } from '../components/DateFilter';
+
+
 import { format, startOfMonth, endOfDay } from 'date-fns';
 
 export function Orders() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { settings } = useSettings();
-  const { dateRange, setDateRange } = useDateFilterStore();
+  const { dateRange, setDateRange, filterType, setFilter } = useDateFilterStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -95,7 +98,9 @@ export function Orders() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [orderToPay, setOrderToPay] = useState<any>(null);
   const [isEditingCustomer, setIsEditingCustomer] = useState(false);
+  const [isCustomerInfoOpen, setIsCustomerInfoOpen] = useState(false);
   const [editCustomerName, setEditCustomerName] = useState('');
   const [editCustomerPhone, setEditCustomerPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
@@ -840,6 +845,8 @@ export function Orders() {
                  userName: profile?.displayName || '',
                  details: JSON.stringify({ orderId: id, amount: o.totalAmount }),
                  module: 'orders',
+                 severity: 'danger',
+                 oldData: o,
                  createdAt: serverTimestamp()
              });
              deleted++;
@@ -940,6 +947,8 @@ export function Orders() {
           userName: profile?.displayName || '',
           details: JSON.stringify({ orderId: orderId, amount: o.totalAmount }),
           module: 'orders',
+          severity: 'danger',
+          oldData: o,
           createdAt: serverTimestamp()
       });
 
@@ -1067,16 +1076,61 @@ export function Orders() {
   const categories = ['all', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
 
   // ================= STATISTICS ================= //
+  let prevStartDate: Date | null = null;
+  let prevEndDate: Date | null = null;
+
+  if (dateRange.startDate && dateRange.endDate) {
+    const diffTime = dateRange.endDate.getTime() - dateRange.startDate.getTime();
+    prevEndDate = new Date(dateRange.startDate.getTime() - 1);
+    prevStartDate = new Date(prevEndDate.getTime() - diffTime);
+  }
+
+  const prevOrdersInDateRange = orders.filter(o => {
+    if (!prevStartDate || !prevEndDate || !o.createdAt) return false;
+    const od = o.createdAt.toDate ? o.createdAt.toDate() : new Date(o.createdAt);
+    return od >= prevStartDate && od <= prevEndDate;
+  });
+
   const ordersInDateRange = orders.filter(o => {
     if (!dateRange.startDate || !dateRange.endDate || !o.createdAt) return true;
     const od = o.createdAt.toDate ? o.createdAt.toDate() : new Date(o.createdAt);
     return od >= dateRange.startDate && od <= dateRange.endDate;
   });
 
+  const totalCount = ordersInDateRange.length;
+  const paidCount = ordersInDateRange.filter(o => o.status === 'paid').length;
+  const unpaidCount = ordersInDateRange.filter(o => o.status === 'unpaid').length;
+  const cancelledCount = ordersInDateRange.filter(o => o.status === 'cancelled').length;
   const totalPaid = ordersInDateRange.filter(o => o.status === 'paid').reduce((acc, o) => acc + (o.totalAmount || 0), 0);
-  const totalUnpaid = ordersInDateRange.filter(o => o.status === 'unpaid').reduce((acc, o) => acc + (o.totalAmount || 0), 0);
-  const totalPending = ordersInDateRange.filter(o => o.status === 'pending').reduce((acc, o) => acc + (o.totalAmount || 0), 0);
-  const totalCancelled = ordersInDateRange.filter(o => o.status === 'cancelled').reduce((acc, o) => acc + (o.totalAmount || 0), 0);
+
+  const prevTotalCount = prevOrdersInDateRange.length;
+  const prevPaidCount = prevOrdersInDateRange.filter(o => o.status === 'paid').length;
+  const prevUnpaidCount = prevOrdersInDateRange.filter(o => o.status === 'unpaid').length;
+  const prevCancelledCount = prevOrdersInDateRange.filter(o => o.status === 'cancelled').length;
+  const prevTotalPaid = prevOrdersInDateRange.filter(o => o.status === 'paid').reduce((acc, o) => acc + (o.totalAmount || 0), 0);
+
+  const calculateTrend = (current: number, previous: number) => {
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const trends = {
+    total: calculateTrend(totalCount, prevTotalCount),
+    paid: calculateTrend(paidCount, prevPaidCount),
+    unpaid: calculateTrend(unpaidCount, prevUnpaidCount),
+    cancelled: calculateTrend(cancelledCount, prevCancelledCount),
+    revenue: calculateTrend(totalPaid, prevTotalPaid)
+  };
+
+  let periodLabel = 'kỳ trước';
+  if (filterType === 'today') periodLabel = 'hôm qua';
+  else if (filterType === 'yesterday') periodLabel = 'ngày trước đó';
+  else if (filterType === '7_days') periodLabel = '7 ngày trước';
+  else if (filterType === '30_days') periodLabel = '30 ngày trước';
+  else if (filterType === 'this_month') periodLabel = 'tháng trước';
+  else if (filterType === 'last_month') periodLabel = 'tháng trước đó';
+  else if (filterType === 'this_year') periodLabel = 'năm trước';
+
   // ============================================== //
 
   return (
@@ -1084,8 +1138,8 @@ export function Orders() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-black tracking-tight text-slate-900 uppercase">Quản lý giao dịch</h1>
-          <p className="text-slate-500 text-xs md:text-sm mt-1">Lịch sử bán hàng, tình trạng giao hàng và đối soát tài chính.</p>
+          <h1 className="text-xl md:text-2xl font-black tracking-tight text-slate-900">Danh sách hóa đơn</h1>
+          <p className="text-slate-500 text-xs md:text-sm mt-1">Quản lý tất cả hóa đơn trong hệ thống</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:gap-4 w-full lg:w-auto pb-2 lg:pb-0">
            {selectedIds.length > 0 && (
@@ -1137,7 +1191,6 @@ export function Orders() {
              </div>
            )}
            <div className="flex items-center gap-2 w-full md:w-auto">
-               <DateFilter />
                {canAdd && (
                  <button 
                    onClick={() => navigate('/orders/create')}
@@ -1153,205 +1206,260 @@ export function Orders() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
-        <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-           <div className="flex justify-between items-start mb-2">
-             <p className="text-[10px] md:text-xs font-bold text-slate-500">Tổng hóa đơn</p>
+        {/* Card 1 */}
+        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group">
+           <div className="flex justify-between items-start mb-2 relative z-10">
+             <p className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest">Tổng hóa đơn</p>
              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
                <Users className="w-4 h-4" />
              </div>
            </div>
-           <div>
-             <p className="text-xl md:text-2xl font-black text-slate-900">{ordersInDateRange.length.toLocaleString('vi-VN')}</p>
-             <p className="text-[10px] md:text-xs text-emerald-500 font-bold mt-1 flex items-center gap-1">
-               <ArrowUpRight className="w-3 h-3" /> 12% <span className="text-slate-400 font-medium">so với tháng trước</span>
+           <div className="relative z-10">
+             <p className="text-xl md:text-2xl font-black text-slate-900">{totalCount.toLocaleString('vi-VN')}</p>
+             <p className={cn("text-[10px] md:text-xs font-bold mt-1 flex items-center gap-1", trends.total >= 0 ? "text-emerald-500" : "text-rose-500")}>
+               {trends.total >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />} 
+               {Math.abs(trends.total).toFixed(1)}% <span className="text-slate-400 font-medium">so với {periodLabel}</span>
              </p>
            </div>
         </div>
-        <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-           <div className="flex justify-between items-start mb-2">
-             <p className="text-[10px] md:text-xs font-bold text-slate-500">Đã thanh toán</p>
+
+        {/* Card 2 */}
+        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group">
+           <div className="flex justify-between items-start mb-2 relative z-10">
+             <p className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest">Đã thanh toán</p>
              <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-500">
                <CheckCircle2 className="w-4 h-4" />
              </div>
            </div>
-           <div>
-             <p className="text-xl md:text-2xl font-black text-slate-900">{ordersInDateRange.filter(o => o.status === 'paid').length.toLocaleString('vi-VN')}</p>
-             <p className="text-[10px] md:text-xs text-emerald-500 font-bold mt-1 flex items-center gap-1">
-               <ArrowUpRight className="w-3 h-3" /> 78.4%
+           <div className="relative z-10">
+             <p className="text-xl md:text-2xl font-black text-slate-900">{paidCount.toLocaleString('vi-VN')}</p>
+             <p className={cn("text-[10px] md:text-xs font-bold mt-1 flex items-center gap-1", trends.paid >= 0 ? "text-emerald-500" : "text-rose-500")}>
+               {trends.paid >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />} 
+               {Math.abs(trends.paid).toFixed(1)}% <span className="text-slate-400 font-medium">so với {periodLabel}</span>
              </p>
            </div>
         </div>
-        <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-           <div className="flex justify-between items-start mb-2">
-             <p className="text-[10px] md:text-xs font-bold text-slate-500">Chưa thanh toán</p>
+
+        {/* Card 3 */}
+        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group">
+           <div className="flex justify-between items-start mb-2 relative z-10">
+             <p className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest">Chưa thanh toán</p>
              <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500">
-               <ClipboardList className="w-4 h-4" />
+               <AlertCircle className="w-4 h-4" />
              </div>
            </div>
-           <div>
-             <p className="text-xl md:text-2xl font-black text-slate-900">{ordersInDateRange.filter(o => o.status === 'unpaid').length.toLocaleString('vi-VN')}</p>
-             <p className="text-[10px] md:text-xs text-emerald-500 font-bold mt-1 flex items-center gap-1">
-               <ArrowUpRight className="w-3 h-3" /> 17.5%
+           <div className="relative z-10">
+             <p className="text-xl md:text-2xl font-black text-slate-900">{unpaidCount.toLocaleString('vi-VN')}</p>
+             <p className={cn("text-[10px] md:text-xs font-bold mt-1 flex items-center gap-1", trends.unpaid <= 0 ? "text-emerald-500" : "text-rose-500")}>
+               {trends.unpaid >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />} 
+               {Math.abs(trends.unpaid).toFixed(1)}% <span className="text-slate-400 font-medium">so với {periodLabel}</span>
              </p>
            </div>
         </div>
-        <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-           <div className="flex justify-between items-start mb-2">
-             <p className="text-[10px] md:text-xs font-bold text-slate-500">Đã hủy</p>
+
+        {/* Card 4 */}
+        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group">
+           <div className="flex justify-between items-start mb-2 relative z-10">
+             <p className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest">Đã hủy</p>
              <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-500">
                <Trash2 className="w-4 h-4" />
              </div>
            </div>
-           <div>
-             <p className="text-xl md:text-2xl font-black text-slate-900">{ordersInDateRange.filter(o => o.status === 'cancelled').length.toLocaleString('vi-VN')}</p>
-             <p className="text-[10px] md:text-xs text-emerald-500 font-bold mt-1 flex items-center gap-1">
-               <ArrowUpRight className="w-3 h-3" /> 4.1%
+           <div className="relative z-10">
+             <p className="text-xl md:text-2xl font-black text-slate-900">{cancelledCount.toLocaleString('vi-VN')}</p>
+             <p className={cn("text-[10px] md:text-xs font-bold mt-1 flex items-center gap-1", trends.cancelled <= 0 ? "text-emerald-500" : "text-rose-500")}>
+               {trends.cancelled >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />} 
+               {Math.abs(trends.cancelled).toFixed(1)}% <span className="text-slate-400 font-medium">so với {periodLabel}</span>
              </p>
            </div>
         </div>
-        <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-           <div className="flex justify-between items-start mb-2">
-             <p className="text-[10px] md:text-xs font-bold text-slate-500">Tổng doanh thu</p>
+
+        {/* Card 5 */}
+        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group">
+           <div className="flex justify-between items-start mb-2 relative z-10">
+             <p className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest">Tổng doanh thu</p>
              <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center text-purple-500">
-               <ArrowUpRight className="w-4 h-4" />
+               <Activity className="w-4 h-4" />
              </div>
            </div>
-           <div>
-             <p className="text-xl md:text-2xl font-black text-slate-900">{formatCurrency(totalPaid)} đ</p>
-             <p className="text-[10px] md:text-xs text-emerald-500 font-bold mt-1 flex items-center gap-1">
-               <ArrowUpRight className="w-3 h-3" /> 15.3% <span className="text-slate-400 font-medium">so với tháng trước</span>
+           <div className="relative z-10">
+             <p className="text-xl md:text-2xl font-black text-slate-900">{formatCurrency(totalPaid)}</p>
+             <p className={cn("text-[10px] md:text-xs font-bold mt-1 flex items-center gap-1", trends.revenue >= 0 ? "text-emerald-500" : "text-rose-500")}>
+               {trends.revenue >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />} 
+               {Math.abs(trends.revenue).toFixed(1)}% <span className="text-slate-400 font-medium">so với {periodLabel}</span>
              </p>
            </div>
         </div>
       </div>
 
       {/* Toolbar & Filters */}
-      <div className="flex flex-col xl:flex-row gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm items-center">
-        <div className="relative flex-1 w-full xl:max-w-[400px]">
-          <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Tìm kiếm mã đơn, tên khách hàng, SĐT..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-          />
-        </div>
-        <div className="flex gap-3 items-center flex-wrap w-full xl:w-auto ml-auto">
-           {/* DateFilter Component can handle styling internally or be wrapped */}
-           <DateFilter />
-           
-           <select 
-              value={statusFilter} 
+      <div className="flex flex-col gap-3 bg-white pb-2">
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Tìm kiếm mã đơn, tên khách hàng, SĐT..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg outline-none text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+            />
+          </div>
+          <div className="flex gap-2 items-center flex-wrap">
+            <select
+              value={filterType === 'custom' ? 'custom' : (filterType || 'all')}
+              onChange={e => {
+                const val = e.target.value;
+                if (val === 'all') {
+                  setFilter('all', { startDate: null, endDate: null });
+                } else if (val === 'today') {
+                  setFilter('today', { startDate: new Date(new Date().setHours(0,0,0,0)), endDate: new Date(new Date().setHours(23,59,59,999)) });
+                } else if (val === 'yesterday') {
+                  const y = new Date(); y.setDate(y.getDate()-1);
+                  setFilter('yesterday', { startDate: new Date(new Date(y).setHours(0,0,0,0)), endDate: new Date(new Date(y).setHours(23,59,59,999)) });
+                } else if (val === 'this_week') {
+                  const now = new Date();
+                  const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + (now.getDay()===0?-6:1)); mon.setHours(0,0,0,0);
+                  const sun = new Date(mon); sun.setDate(mon.getDate()+6); sun.setHours(23,59,59,999);
+                  setFilter('this_week', { startDate: mon, endDate: sun });
+                } else if (val === 'this_month') {
+                  const now = new Date();
+                  setFilter('this_month', { startDate: new Date(now.getFullYear(), now.getMonth(), 1), endDate: new Date(now.getFullYear(), now.getMonth()+1, 0, 23,59,59,999) });
+                } else if (val === 'last_month') {
+                  const now = new Date();
+                  setFilter('last_month', { startDate: new Date(now.getFullYear(), now.getMonth()-1, 1), endDate: new Date(now.getFullYear(), now.getMonth(), 0, 23,59,59,999) });
+                } else if (val === 'custom') {
+                  setFilter('custom', { startDate: null, endDate: null });
+                }
+              }}
+              className="shrink-0 px-2 sm:px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 outline-none"
+            >
+              <option value="all">Thời gian: Tất cả</option>
+              <option value="today">Hôm nay</option>
+              <option value="yesterday">Hôm qua</option>
+              <option value="this_week">Tuần này</option>
+              <option value="this_month">Tháng này</option>
+              <option value="last_month">Tháng trước</option>
+              <option value="custom">📅 Tùy chỉnh...</option>
+            </select>
+            <select
+              value={statusFilter}
               onChange={e => setStatusFilter(e.target.value as any)}
-              className="px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 outline-none"
-           >
+              className="shrink-0 px-2 sm:px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 outline-none"
+            >
               <option value="all">Trạng thái: Tất cả</option>
               <option value="paid">Đã thanh toán</option>
               <option value="unpaid">Chưa thanh toán</option>
               <option value="pending">Chờ xác nhận</option>
               <option value="deposit">Đặt cọc</option>
               <option value="cancelled">Đã hủy</option>
-           </select>
-
-           <select 
-              value={paymentMethodFilter} 
+            </select>
+            <select
+              value={paymentMethodFilter}
               onChange={e => setPaymentMethodFilter(e.target.value)}
-              className="px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 outline-none"
-           >
+              className="shrink-0 px-2 sm:px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 outline-none"
+            >
               <option value="all">Phương thức: Tất cả</option>
               <option value="cash">Tiền mặt</option>
               <option value="transfer">Chuyển khoản</option>
               <option value="momo">Ví MoMo</option>
               <option value="card">Quẹt thẻ</option>
-           </select>
-
-           <button 
-             onClick={() => { setSearchTerm(''); setStatusFilter('all'); setPaymentMethodFilter('all'); }}
-             className="px-4 py-2.5 bg-slate-50 text-slate-600 rounded-lg text-sm font-bold border border-slate-200 hover:bg-slate-100 transition-all flex items-center gap-2"
-           >
-             <Filter className="w-4 h-4" /> Bộ lọc
-           </button>
-           
-           <button 
-             onClick={() => { setSearchTerm(''); setStatusFilter('all'); setPaymentMethodFilter('all'); }}
-             className="w-10 h-[42px] bg-slate-50 text-slate-600 rounded-lg flex items-center justify-center border border-slate-200 hover:bg-slate-100 transition-all"
-           >
-             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-           </button>
-        </div>
-      </div>
-
-      {/* Tabs Row */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex overflow-x-auto scrollbar-hide w-full md:w-auto border-b border-slate-200">
-          <div className="flex gap-6 min-w-max px-1">
-             <button 
-               onClick={() => setStatusFilter('all')}
-               className={cn("pb-3 text-sm font-bold border-b-2 transition-all", statusFilter === 'all' ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700")}
-             >
-               Tất cả ({orders.length})
-             </button>
-             <button 
-               onClick={() => setStatusFilter('paid')}
-               className={cn("pb-3 text-sm font-bold border-b-2 transition-all", statusFilter === 'paid' ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700")}
-             >
-               Đã thanh toán ({orders.filter(o => o.status === 'paid').length})
-             </button>
-             <button 
-               onClick={() => setStatusFilter('unpaid')}
-               className={cn("pb-3 text-sm font-bold border-b-2 transition-all", statusFilter === 'unpaid' ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700")}
-             >
-               Chưa thanh toán ({orders.filter(o => o.status === 'unpaid').length})
-             </button>
-             <button 
-               onClick={() => setStatusFilter('cancelled')}
-               className={cn("pb-3 text-sm font-bold border-b-2 transition-all", statusFilter === 'cancelled' ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700")}
-             >
-               Đã hủy ({orders.filter(o => o.status === 'cancelled').length})
-             </button>
-             <button 
-               onClick={() => setStatusFilter('deposit')}
-               className={cn("pb-3 text-sm font-bold border-b-2 transition-all", statusFilter === 'deposit' ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700")}
-             >
-               Đặt cọc ({orders.filter(o => o.status === 'deposit').length})
-             </button>
+            </select>
+            <button
+              onClick={() => { setSearchTerm(''); setStatusFilter('all'); setPaymentMethodFilter('all'); setFilter('all', { startDate: null, endDate: null }); }}
+              className="shrink-0 w-[36px] h-[36px] bg-white text-slate-500 rounded-lg flex items-center justify-center border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
+              title="Xóa bộ lọc"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            </button>
           </div>
         </div>
-        
+
+        {/* Custom Date Range — hiện khi chọn Tùy chỉnh */}
+        {filterType === 'custom' && (
+          <div className="flex flex-wrap items-center gap-3 px-3 py-2.5 bg-blue-50/70 border border-blue-100 rounded-xl">
+            <span className="text-xs font-bold text-blue-600 shrink-0">📅 Khoảng ngày tùy chỉnh</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs font-medium text-slate-500 shrink-0">Từ ngày</label>
+                <input
+                  type="date"
+                  className="px-2.5 py-1.5 text-xs font-medium border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-slate-700 cursor-pointer"
+                  value={dateRange.startDate ? new Date(dateRange.startDate.getTime() - dateRange.startDate.getTimezoneOffset()*60000).toISOString().split('T')[0] : ''}
+                  onChange={e => {
+                    const d = e.target.value ? new Date(e.target.value + 'T00:00:00') : null;
+                    setFilter('custom', { startDate: d, endDate: dateRange.endDate });
+                  }}
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs font-medium text-slate-500 shrink-0">Đến ngày</label>
+                <input
+                  type="date"
+                  className="px-2.5 py-1.5 text-xs font-medium border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-slate-700 cursor-pointer"
+                  value={dateRange.endDate ? new Date(dateRange.endDate.getTime() - dateRange.endDate.getTimezoneOffset()*60000).toISOString().split('T')[0] : ''}
+                  min={dateRange.startDate ? new Date(dateRange.startDate.getTime() - dateRange.startDate.getTimezoneOffset()*60000).toISOString().split('T')[0] : undefined}
+                  onChange={e => {
+                    const d = e.target.value ? new Date(e.target.value + 'T23:59:59') : null;
+                    setFilter('custom', { startDate: dateRange.startDate, endDate: d });
+                  }}
+                />
+              </div>
+              {dateRange.startDate && dateRange.endDate && (
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2.5 py-1 rounded-lg whitespace-nowrap">
+                  {dateRange.startDate.toLocaleDateString('vi-VN')} → {dateRange.endDate.toLocaleDateString('vi-VN')}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+
+      {/* Tabs Row */}
+      <div className="flex justify-between items-center gap-4 py-2 border-b border-slate-100">
+        <p className="text-sm font-bold text-slate-500">
+          <span className="text-slate-900">{ordersInDateRange.length}</span> hóa đơn
+        </p>
         <button 
            onClick={() => exportExcelBulk(orders)}
-           className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm font-bold hover:bg-emerald-100 transition-all flex items-center gap-2 border border-emerald-100 shrink-0"
+           className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm font-bold hover:bg-emerald-100 transition-all flex items-center gap-2 border border-emerald-100 shrink-0 shadow-sm"
         >
           <FileSpreadsheet className="w-4 h-4" /> Xuất Excel
         </button>
       </div>
 
+
       {/* Orders Table */}
-      <div className="bg-white rounded-[32px] shadow-sm border border-slate-100 overflow-hidden relative">
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden relative mt-4">
         <div className="overflow-x-auto overflow-y-visible scrollbar-hide">
           <table className="min-w-[800px] w-full text-left border-collapse table-auto">
             <thead>
-              <tr className="bg-slate-50 text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
-                <th className="px-2 py-4 md:px-6 md:py-6 w-8 md:w-12 text-center">
+              <tr className="bg-white text-slate-500 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100">
+                <th className="px-4 py-4 md:px-6 w-12 text-center">
                    <input 
                      type="checkbox"
-                     checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
+                     checked={paginatedOrders.length > 0 && paginatedOrders.every(o => selectedIds.includes(o.id!))}
                      onChange={(e) => {
-                        if (e.target.checked) setSelectedIds(filteredOrders.map(o => o.id!));
-                        else setSelectedIds([]);
+                        if (e.target.checked) {
+                          const newIds = [...selectedIds];
+                          paginatedOrders.forEach(o => { if (!newIds.includes(o.id!)) newIds.push(o.id!); });
+                          setSelectedIds(newIds);
+                        } else {
+                          setSelectedIds(selectedIds.filter(id => !paginatedOrders.find(o => o.id === id)));
+                        }
                      }}
                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                    />
                 </th>
-                <th className="px-2 md:px-4 py-4 md:py-6 whitespace-nowrap min-w-[100px]">Mã đơn</th>
-                <th className="px-2 md:px-4 py-4 md:py-6 min-w-[100px]">Khách hàng</th>
-                <th className="px-2 md:px-4 py-4 md:py-6 text-right whitespace-nowrap">Tổng tiền</th>
-                <th className="px-2 md:px-4 py-4 md:py-6 text-right whitespace-nowrap hidden lg:table-cell">Khách trả</th>
-                <th className="px-2 md:px-4 py-4 md:py-6 whitespace-nowrap text-center">Trạng thái</th>
-                <th className="px-2 md:px-4 py-4 md:py-6 whitespace-nowrap text-center hidden xl:table-cell">Phương thức</th>
-                <th className="px-2 md:px-4 py-4 md:py-6 whitespace-nowrap text-right hidden sm:table-cell">Ngày tạo</th>
-                <th className="px-2 md:px-4 py-4 md:py-6 text-right whitespace-nowrap w-16 md:w-32">Thao tác</th>
+                <th className="px-4 py-4 whitespace-nowrap min-w-[120px]">Mã hóa đơn</th>
+                <th className="px-4 py-4 min-w-[150px]">Khách hàng</th>
+                <th className="px-4 py-4 text-right whitespace-nowrap">Tổng tiền</th>
+                <th className="px-4 py-4 text-right whitespace-nowrap hidden lg:table-cell">Thanh toán</th>
+                <th className="px-4 py-4 whitespace-nowrap text-center">Trạng thái</th>
+                <th className="px-4 py-4 whitespace-nowrap text-center hidden xl:table-cell">Phương thức</th>
+                <th className="px-4 py-4 whitespace-nowrap text-right hidden sm:table-cell">Ngày tạo</th>
+                <th className="px-4 py-4 text-center whitespace-nowrap w-24">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1375,62 +1483,55 @@ export function Orders() {
                       className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
                   </td>
-                  <td className="px-2 md:px-4 py-4 md:py-5 align-middle" onClick={() => setSelectedOrder(order)}>
+                  <td className="px-4 py-4 align-middle" onClick={() => setSelectedOrder(order)}>
                     <div>
-                      <p className="font-black text-slate-900 tracking-tight text-[11px] md:text-sm whitespace-nowrap">#TX-{order.id?.slice(-6).toUpperCase()}</p>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 whitespace-nowrap sm:hidden">
-                        {order.createdAt ? formatDate(order.createdAt) : '...'}
-                      </p>
+                      <p className="font-bold text-blue-600 tracking-tight text-sm whitespace-nowrap hover:underline cursor-pointer">HD{order.id?.slice(-8).toUpperCase()}</p>
                     </div>
                   </td>
-                  <td className="px-2 md:px-4 py-4 md:py-5 align-middle" onClick={() => setSelectedOrder(order)}>
+                  <td className="px-4 py-4 align-middle" onClick={() => setSelectedOrder(order)}>
                     <div className="text-left">
-                      <p className="font-black text-slate-800 text-[11px] md:text-sm truncate w-20 md:w-auto">{order.customerName || 'KHÁCH VÃNG LAI'}</p>
-                      {order.customerPhone && <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase mt-1 whitespace-nowrap">{order.customerPhone}</p>}
+                      <p className="font-bold text-slate-800 text-sm truncate max-w-[200px]">{order.customerName || 'Khách vãng lai'}</p>
+                      {order.customerPhone && <p className="text-xs text-slate-500 mt-0.5 whitespace-nowrap">{order.customerPhone}</p>}
                     </div>
                   </td>
-                  <td className="px-2 md:px-4 py-4 md:py-5 text-right align-middle" onClick={() => setSelectedOrder(order)}>
+                  <td className="px-4 py-4 text-right align-middle" onClick={() => setSelectedOrder(order)}>
+                    <p className="font-bold text-slate-900 text-sm whitespace-nowrap">{formatCurrency(order.totalAmount)}</p>
+                  </td>
+                  <td className="px-4 py-4 text-right align-middle hidden lg:table-cell" onClick={() => setSelectedOrder(order)}>
                     <div>
-                      <p className="font-black text-slate-900 text-[11px] md:text-sm whitespace-nowrap">{formatCurrency(order.totalAmount)}</p>
-                      <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 whitespace-nowrap">{order.items.length} SP</p>
+                      <p className={cn("font-bold text-sm whitespace-nowrap", 
+                        order.status === 'paid' ? "text-emerald-600" :
+                        order.status === 'unpaid' ? "text-rose-600" :
+                        "text-orange-600"
+                      )}>{formatCurrency(order.amountGiven || (order.status === 'paid' ? order.totalAmount : 0))}</p>
                     </div>
                   </td>
-                  <td className="px-2 md:px-4 py-4 md:py-5 text-right align-middle hidden lg:table-cell" onClick={() => setSelectedOrder(order)}>
-                    <div>
-                      <p className="font-black text-emerald-600 text-[11px] md:text-sm whitespace-nowrap">{formatCurrency(order.amountGiven || (order.status === 'paid' ? order.totalAmount : 0))}</p>
-                    </div>
-                  </td>
-                  <td className="px-2 md:px-4 py-4 md:py-5 align-middle text-center" onClick={() => setSelectedOrder(order)}>
+                  <td className="px-4 py-4 align-middle text-center" onClick={() => setSelectedOrder(order)}>
                     <span className={cn(
-                      "px-2 py-1 md:px-3 md:py-1.5 rounded-lg md:rounded-xl text-[8px] md:text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1 md:gap-2 whitespace-nowrap",
+                      "px-2.5 py-1 rounded-md text-[11px] font-bold inline-flex items-center whitespace-nowrap",
                       order.status === 'paid' ? "bg-emerald-50 text-emerald-600" :
                       order.status === 'pending' ? "bg-amber-50 text-orange-600" :
                       order.status === 'unpaid' ? "bg-orange-50 text-orange-600" :
                       order.status === 'deposit' ? "bg-blue-50 text-blue-600" :
                       "bg-rose-50 text-rose-600"
                     )}>
-                      <div className={cn("w-1.5 h-1.5 rounded-full hidden sm:block",
-                        order.status === 'paid' ? "bg-emerald-500" :
-                        order.status === 'pending' ? "bg-amber-500" :
-                        order.status === 'unpaid' ? "bg-orange-500" :
-                        order.status === 'deposit' ? "bg-blue-500" : "bg-rose-500"
-                      )}></div>
                       {getStatusText(order.status)}
                     </span>
                   </td>
-                  <td className="px-2 md:px-4 py-4 md:py-5 align-middle text-center hidden xl:table-cell" onClick={() => setSelectedOrder(order)}>
-                     <span className="px-3 py-1.5 rounded-lg bg-slate-50 text-slate-600 text-[10px] font-bold inline-flex items-center gap-1.5 whitespace-nowrap">
-                        {order.paymentMethod === 'transfer' ? <ArrowUpRight className="w-3 h-3 text-blue-500"/> :
-                         order.paymentMethod === 'momo' ? <ArrowUpRight className="w-3 h-3 text-pink-500"/> :
-                         order.paymentMethod === 'card' ? <ArrowUpRight className="w-3 h-3 text-emerald-500"/> :
-                         <ArrowDownRight className="w-3 h-3 text-amber-500" />}
+                  <td className="px-4 py-4 align-middle text-center hidden xl:table-cell" onClick={() => setSelectedOrder(order)}>
+                     <span className="text-slate-600 text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap">
+                        {order.paymentMethod === 'transfer' ? <ArrowUpRight className="w-3.5 h-3.5 text-blue-500"/> :
+                         order.paymentMethod === 'momo' ? <ArrowUpRight className="w-3.5 h-3.5 text-pink-500"/> :
+                         order.paymentMethod === 'card' ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500"/> :
+                         <ArrowDownRight className="w-3.5 h-3.5 text-amber-500" />}
                         {order.paymentMethod === 'transfer' ? 'Chuyển khoản' :
                          order.paymentMethod === 'momo' ? 'Ví MoMo' :
-                         order.paymentMethod === 'card' ? 'Quẹt thẻ' : 'Tiền mặt'}
+                         order.paymentMethod === 'card' ? 'Quẹt thẻ' : 
+                         order.paymentMethod === 'cash' ? 'Tiền mặt' : '—'}
                      </span>
                   </td>
-                  <td className="px-2 md:px-4 py-4 md:py-5 text-right align-middle hidden sm:table-cell" onClick={() => setSelectedOrder(order)}>
-                    <p className="font-bold text-slate-600 text-[10px] md:text-xs">
+                  <td className="px-4 py-4 text-right align-middle hidden sm:table-cell" onClick={() => setSelectedOrder(order)}>
+                    <p className="text-slate-500 text-xs font-medium">
                        {order.createdAt ? formatDate(order.createdAt) : '...'}
                     </p>
                   </td>
@@ -1438,8 +1539,8 @@ export function Orders() {
                     <div className="flex items-center justify-end gap-1">
                       {/* Xem */}
                       <div className="relative group/tooltip">
-                        <button onClick={() => setSelectedOrder(order)} className="bg-white md:bg-transparent border border-slate-100 md:border-none shadow-sm md:shadow-none hover:bg-slate-100 text-slate-500 hover:text-slate-900 rounded-md w-7 h-7 md:w-9 md:h-9 flex items-center justify-center transition-colors">
-                          <Eye className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                        <button onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                          <Eye className="w-4 h-4" />
                         </button>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/tooltip:block px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded shadow-lg whitespace-nowrap z-50">Xem chi tiết</div>
                       </div>
@@ -1448,10 +1549,10 @@ export function Orders() {
                       <div className="relative group/tooltip">
                         <button 
                           disabled={!canEdit && profile?.role !== 'admin'}
-                          onClick={() => openEditModal(order)} 
-                          className="bg-white md:bg-transparent border border-slate-100 md:border-none shadow-sm md:shadow-none hover:bg-slate-100 text-slate-500 hover:text-slate-900 disabled:hover:bg-transparent disabled:opacity-30 rounded-md w-7 h-7 md:w-9 md:h-9 flex items-center justify-center transition-colors"
+                          onClick={(e) => { e.stopPropagation(); openEditModal(order); }} 
+                          className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 disabled:opacity-30 transition-colors"
                         >
-                          <FileEdit className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          <FileEdit className="w-4 h-4" />
                         </button>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/tooltip:block px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded shadow-lg whitespace-nowrap z-50">Sửa đơn</div>
                       </div>
@@ -1462,11 +1563,11 @@ export function Orders() {
                           <button 
                             onClick={(e) => {
                                e.stopPropagation();
-                               navigate('/orders/payments', { state: { orderData: order } });
+                               setOrderToPay(order);
                             }} 
-                            className="bg-white md:bg-transparent border border-emerald-100 md:border-none shadow-sm md:shadow-none hover:bg-emerald-50 text-emerald-500 hover:text-emerald-600 rounded-md w-7 h-7 md:w-9 md:h-9 flex items-center justify-center transition-colors"
+                            className="w-8 h-8 flex items-center justify-center rounded-md text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
                           >
-                            <CreditCard className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                            <CreditCard className="w-4 h-4" />
                           </button>
                           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/tooltip:block px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded shadow-lg whitespace-nowrap z-50">Thanh toán</div>
                         </div>
@@ -1475,15 +1576,16 @@ export function Orders() {
                       {/* In */}
                       <div className="relative group/tooltip">
                         <button 
-                          onClick={async () => {
+                          onClick={async (e) => {
+                             e.stopPropagation();
                              setSelectedOrder(order);
                              setTimeout(() => {
                                printElement('print-order-receipt-thermal', '80mm');
                              }, 100);
                           }} 
-                          className="bg-white md:bg-transparent border border-slate-100 md:border-none shadow-sm md:shadow-none hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-md w-7 h-7 md:w-9 md:h-9 flex items-center justify-center transition-colors"
+                          className="w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                         >
-                          <Printer className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          <Printer className="w-4 h-4" />
                         </button>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/tooltip:block px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded shadow-lg whitespace-nowrap z-50">In hóa đơn</div>
                       </div>
@@ -1492,10 +1594,10 @@ export function Orders() {
                       <div className="relative group/tooltip">
                         <button 
                           disabled={order.status === 'paid' || (!canDelete && profile?.role !== 'admin')}
-                          onClick={() => setDeleteConfirm({ isOpen: true, orderId: order.id!, order })}
-                          className="bg-white md:bg-transparent border border-rose-100 md:border-none shadow-sm md:shadow-none hover:bg-rose-50 text-rose-500 hover:text-rose-600 disabled:hover:bg-transparent disabled:opacity-30 rounded-md w-7 h-7 md:w-9 md:h-9 flex items-center justify-center transition-colors"
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ isOpen: true, orderId: order.id!, order }); }}
+                          className="w-8 h-8 flex items-center justify-center rounded-md text-rose-400 hover:text-rose-600 hover:bg-rose-50 disabled:hover:bg-transparent disabled:opacity-30 transition-colors"
                         >
-                          <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/tooltip:block px-2 py-1 bg-slate-900 text-white text-[10px] font-bold rounded shadow-lg whitespace-nowrap z-50">Xóa đơn</div>
                       </div>
@@ -1520,7 +1622,7 @@ export function Orders() {
                               <FileEdit className="w-4 h-4 text-slate-500" /> Sửa đơn
                             </button>
                             {order.status !== 'paid' && order.status !== 'cancelled' && (
-                               <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); navigate('/orders/payments', { state: { orderData: order } }); }} className="px-4 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 w-full text-left">
+                               <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); setOrderToPay(order); }} className="px-4 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 w-full text-left">
                                  <CreditCard className="w-4 h-4 text-emerald-500" /> Thanh toán
                                </button>
                             )}
@@ -2123,7 +2225,7 @@ export function Orders() {
         {selectedOrder && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedOrder(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[98vw] max-w-7xl h-[95vh] bg-slate-50 rounded-[32px] shadow-2xl z-50 overflow-hidden flex flex-col">
+            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="fixed right-0 top-0 bottom-0 w-full md:w-[85vw] lg:w-[1000px] xl:w-[1200px] max-w-full bg-slate-50 shadow-2xl z-50 overflow-hidden flex flex-col">
               {/* Header */}
               <div className="p-4 md:p-6 bg-white border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-4">
                 <div className="flex items-center gap-4">
@@ -2219,85 +2321,150 @@ export function Orders() {
                 
                 {/* Column 1: Info & Status */}
                 <div className="w-full lg:w-[320px] xl:w-[360px] flex flex-col gap-6 overflow-y-auto pr-2 scrollbar-hide shrink-0">
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative space-y-4">
-                    <div className="flex items-center justify-between mb-2">
+                  <div className="bg-white rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden transition-all duration-300">
+                    <div 
+                      className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => setIsCustomerInfoOpen(!isCustomerInfoOpen)}
+                    >
                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                          <User className="w-3.5 h-3.5" /> Thông tin khách hàng
                        </h3>
-                       {canEdit && (
-                          <button onClick={() => {
-                             if (isEditingCustomer) handleUpdateCustomer();
-                             else {
-                               setEditCustomerName(selectedOrder.customerName || '');
-                               setEditCustomerPhone(selectedOrder.customerPhone || '');
-                               setIsEditingCustomer(true);
-                             }
-                          }} className="text-[10px] font-bold text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-lg">
-                             {isEditingCustomer ? 'Lưu lại' : 'Chỉnh sửa'}
-                          </button>
-                       )}
+                       <div className="flex items-center gap-3">
+                         {canEdit && (
+                            <button onClick={(e) => {
+                               e.stopPropagation();
+                               if (isEditingCustomer) handleUpdateCustomer();
+                               else {
+                                 setEditCustomerName(selectedOrder.customerName || '');
+                                 setEditCustomerPhone(selectedOrder.customerPhone || '');
+                                 setIsEditingCustomer(true);
+                                 setIsCustomerInfoOpen(true);
+                               }
+                            }} className="text-[10px] font-bold text-blue-600 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors">
+                               {isEditingCustomer ? 'Lưu lại' : 'Chỉnh sửa'}
+                            </button>
+                         )}
+                         <ChevronRight className={cn("w-4 h-4 text-slate-400 transition-transform", isCustomerInfoOpen && "rotate-90")} />
+                       </div>
                     </div>
                     
-                    <div className="space-y-3">
-                      <div>
-                         <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Tên khách hàng</p>
-                         {isEditingCustomer ? (
-                            <input type="text" value={editCustomerName} onChange={e => setEditCustomerName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold outline-none focus:border-blue-500" />
-                         ) : (
-                            <p className="font-black text-slate-900 text-sm tracking-tight">{selectedOrder.customerName || 'KHÁCH VÃNG LAI'}</p>
-                         )}
-                      </div>
-                      <div>
-                         <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Số điện thoại</p>
-                         {isEditingCustomer ? (
-                            <input type="text" value={editCustomerPhone} onChange={e => setEditCustomerPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold outline-none focus:border-blue-500" />
-                         ) : (
-                            <p className="font-bold text-slate-700 text-sm tracking-tight">{selectedOrder.customerPhone || 'Không có'}</p>
-                         )}
-                      </div>
-                      <div>
-                         <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Thời gian tạo</p>
-                         <p className="font-bold text-slate-700 text-sm tracking-tight">{selectedOrder.createdAt ? formatDate(selectedOrder.createdAt) : 'Không xác định'}</p>
-                      </div>
-                      <div>
-                         <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Phương thức thanh toán</p>
-                         <p className="font-bold text-slate-700 text-sm tracking-tight">{selectedOrder.paymentMethod === 'cash' ? 'Tiền mặt' : selectedOrder.paymentMethod === 'transfer' ? 'Chuyển khoản' : selectedOrder.paymentMethod === 'momo' ? 'Ví MoMo' : selectedOrder.paymentMethod === 'card' ? 'Quẹt thẻ' : 'Chưa thanh toán'}</p>
-                      </div>
-                    </div>
+                    <AnimatePresence>
+                      {isCustomerInfoOpen && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                          <div className="p-5 pt-0 space-y-4">
+                            <div>
+                               <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Tên khách hàng</p>
+                               {isEditingCustomer ? (
+                                  <input type="text" value={editCustomerName} onChange={e => setEditCustomerName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold outline-none focus:border-blue-500" />
+                               ) : (
+                                  <p className="font-black text-slate-900 text-sm tracking-tight">{selectedOrder.customerName || 'KHÁCH VÃNG LAI'}</p>
+                               )}
+                            </div>
+                            <div>
+                               <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Số điện thoại</p>
+                               {isEditingCustomer ? (
+                                  <input type="text" value={editCustomerPhone} onChange={e => setEditCustomerPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold outline-none focus:border-blue-500" />
+                               ) : (
+                                  <p className="font-bold text-slate-700 text-sm tracking-tight">{selectedOrder.customerPhone || 'Không có'}</p>
+                               )}
+                            </div>
+                            <div>
+                               <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Thời gian tạo</p>
+                               <p className="font-bold text-slate-700 text-sm tracking-tight">{selectedOrder.createdAt ? formatDate(selectedOrder.createdAt) : 'Không xác định'}</p>
+                            </div>
+                            <div>
+                               <p className="text-[9px] text-slate-400 uppercase font-bold mb-1">Phương thức thanh toán</p>
+                               <p className="font-bold text-slate-700 text-sm tracking-tight">{selectedOrder.paymentMethod === 'cash' ? 'Tiền mặt' : selectedOrder.paymentMethod === 'transfer' ? 'Chuyển khoản' : selectedOrder.paymentMethod === 'momo' ? 'Ví MoMo' : selectedOrder.paymentMethod === 'card' ? 'Quẹt thẻ' : 'Chưa thanh toán'}</p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                 {/* Status Update */}
-                <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Activity className="w-3.5 h-3.5" /> Tiến độ đơn hàng
+                <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-6">
+                    <Activity className="w-3.5 h-3.5" /> Tiến độ giao hàng
                   </h3>
-                  <div className="flex flex-col gap-2">
-                    {['pending', 'unpaid', 'deposit', 'paid', 'cancelled'].map(s => (
-                      <button
-                        key={s}
-                        disabled={!canEdit || selectedOrder.status === 'paid' || selectedOrder.status === 'cancelled'}
-                        onClick={() => {
-                           if (s === 'paid') {
-                              navigate('/orders/payments', { state: { orderData: selectedOrder } });
-                           } else {
-                              updateOrderStatus(selectedOrder.id!, s);
-                           }
-                        }}
-                        className={cn(
-                          "w-full py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all text-left flex items-center justify-between",
-                          selectedOrder.status === s 
-                            ? (s === 'paid' ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20" : 
-                               s === 'cancelled' ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20" :
-                               s === 'deposit' ? "bg-blue-500 text-white shadow-lg shadow-blue-500/20" :
-                               s === 'unpaid' ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20" :
-                               "bg-amber-500 text-white shadow-lg shadow-amber-500/20")
-                            : "bg-slate-50 text-slate-500 hover:bg-slate-100 border border-slate-100"
-                        )}
-                      >
-                        <span>{getStatusText(s)}</span>
-                        {selectedOrder.status === s && <CheckCircle2 className="w-4 h-4" />}
-                      </button>
-                    ))}
+                  
+                  <div className="relative flex items-center justify-between px-2 pb-6">
+                    {/* Background Line */}
+                    <div className="absolute left-[20px] right-[20px] top-4 h-1 bg-slate-100 rounded-full z-0"></div>
+                    
+                    {/* Active Line Progress */}
+                    {(() => {
+                       const statuses = ['pending', 'unpaid', 'paid'];
+                       const currentIdx = statuses.indexOf(selectedOrder.status === 'cancelled' ? 'pending' : selectedOrder.status);
+                       const validIdx = currentIdx === -1 ? 0 : currentIdx;
+                       
+                       // Each of the 4 buttons is flex-1, so each takes 25% of the total width.
+                       // The center of button i is at (i + 0.5) * 25%.
+                       // Since the line starts at left-[20px], we subtract 20px from that width.
+                       return selectedOrder.status !== 'cancelled' ? (
+                         <div 
+                           className="absolute left-[20px] top-4 h-1 bg-emerald-500 rounded-full z-0 transition-all duration-500" 
+                           style={{ width: `calc(${ (validIdx + 0.5) * 25 }% - 20px)` }}
+                         ></div>
+                       ) : null;
+                    })()}
+
+                    {['pending', 'unpaid', 'paid', 'cancelled'].map((s, idx, arr) => {
+                       // Custom logic to handle "cancelled" properly in a linear stepper
+                       const isCancelled = selectedOrder.status === 'cancelled';
+                       const isActive = selectedOrder.status === s;
+                       
+                       // A step is completed if it's before the current active step (and not cancelled)
+                       const statusOrder = ['pending', 'unpaid', 'paid'];
+                       let isCompleted = false;
+                       if (!isCancelled && s !== 'cancelled') {
+                          isCompleted = statusOrder.indexOf(selectedOrder.status) >= statusOrder.indexOf(s);
+                       }
+
+                       // Cancelled button always sits at the end but doesn't fill progress
+                       
+                       return (
+                          <button
+                            key={s}
+                            disabled={!canEdit || selectedOrder.status === 'paid' || selectedOrder.status === 'cancelled'}
+                            onClick={() => {
+                               if (s === 'paid') {
+                                  navigate('/orders/payments', { state: { orderData: selectedOrder } });
+                               } else {
+                                  updateOrderStatus(selectedOrder.id!, s);
+                               }
+                            }}
+                            className={cn(
+                              "relative z-10 flex flex-col items-center gap-2 outline-none group focus:outline-none flex-1",
+                              s === 'cancelled' ? "opacity-90" : ""
+                            )}
+                            title={getStatusText(s)}
+                          >
+                            <div className={cn(
+                              "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 border-[3px] bg-white",
+                              isActive && !isCancelled
+                                ? "border-emerald-500 text-emerald-600 shadow-md shadow-emerald-500/30 scale-110" 
+                                : isCompleted
+                                  ? "border-emerald-500 bg-emerald-500 text-white"
+                                  : isActive && isCancelled && s === 'cancelled'
+                                    ? "border-rose-500 bg-rose-500 text-white scale-110 shadow-md shadow-rose-500/30"
+                                    : "border-slate-200 text-slate-300 group-hover:border-blue-300 group-hover:text-blue-400"
+                            )}>
+                              {isCompleted && !isActive ? <CheckCircle2 className="w-4 h-4" /> : 
+                               isActive && isCancelled ? <X className="w-4 h-4" /> : 
+                               <div className="w-2 h-2 rounded-full bg-current" />}
+                            </div>
+                            <span className={cn(
+                              "absolute top-10 text-[9px] font-black uppercase tracking-widest whitespace-nowrap transition-colors",
+                              isActive || isCompleted 
+                                ? (s === 'cancelled' ? "text-rose-500" : "text-emerald-600") 
+                                : "text-slate-400 group-hover:text-blue-500"
+                            )}>
+                              {getStatusText(s)}
+                            </span>
+                          </button>
+                       );
+                    })}
                   </div>
                 </div>
               </div>
@@ -2305,29 +2472,33 @@ export function Orders() {
               {/* Column 2: Items & Financials */}
               <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2 scrollbar-hide">
                 {/* Items List */}
-                <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex-1 flex flex-col min-h-0">
+                <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex-1 flex flex-col">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4 shrink-0">
-                    <Package className="w-3.5 h-3.5" /> Danh sách sản phẩm ({selectedOrder.items.length})
+                    <Package className="w-3.5 h-3.5" /> Thông tin sản phẩm khách hàng mua ({selectedOrder.items.length})
                   </h3>
-                  <div className="space-y-3 overflow-y-auto pr-2 scrollbar-hide flex-1">
+                  {/* Remove absolute min-h-0 and flex-1 from child to prevent collapsing to 0 height in some browsers */}
+                  <div className="space-y-3 pr-2 flex-grow overflow-y-auto">
                     {selectedOrder.items.map((item, idx) => (
-                      <div key={idx} className="p-3 md:p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center gap-3 md:gap-4 hover:border-blue-200 transition-colors">
-                        <div className="w-12 h-12 bg-white rounded-xl shadow-sm overflow-hidden shrink-0 flex items-center justify-center text-slate-300">
-                          {(() => {
-                             const img = item.image || (item.type === 'product' ? products.find(p => p.id === item.id)?.images?.[0] : services.find(s => s.id === item.id)?.images?.[0]);
-                             return img ? <img src={img} className="w-full h-full object-cover" /> : item.type === 'product' ? <Package className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />;
-                          })()}
-                        </div>
-                        <div className="flex-1 min-w-0 pr-2">
-                          <p className="font-black text-xs text-slate-900 uppercase tracking-tight truncate" title={item.name}>{item.name}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                             <span className={cn("text-[8px] font-black px-1.5 py-0.5 rounded uppercase", item.type === 'product' ? "bg-blue-50 text-blue-500" : "bg-purple-50 text-purple-500")}>
-                               {item.type === 'product' ? 'Sản phẩm' : 'Dịch vụ'}
-                             </span>
-                             <p className="text-[10px] text-slate-500 font-bold">{formatCurrency(item.price)} <span className="text-slate-300">x</span> {item.quantity}</p>
+                      <div key={idx} className="p-3 md:p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4 hover:border-blue-200 transition-colors">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="w-12 h-12 bg-white rounded-xl shadow-sm overflow-hidden shrink-0 flex items-center justify-center text-slate-300">
+                            {(() => {
+                               const img = item.image || (item.type === 'product' ? products.find(p => p.id === item.id)?.images?.[0] : services.find(s => s.id === item.id)?.images?.[0]);
+                               return img ? <img src={img} className="w-full h-full object-cover" /> : item.type === 'product' ? <Package className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />;
+                            })()}
+                          </div>
+                          <div className="flex-1 min-w-0 pr-2">
+                            <p className="font-black text-xs text-slate-900 uppercase tracking-tight truncate" title={item.name}>{item.name}</p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                               <span className={cn("text-[8px] font-black px-1.5 py-0.5 rounded uppercase", item.type === 'product' ? "bg-blue-50 text-blue-500" : "bg-purple-50 text-purple-500")}>
+                                 {item.type === 'product' ? 'Sản phẩm' : 'Dịch vụ'}
+                               </span>
+                               <p className="text-[10px] text-slate-500 font-bold">{formatCurrency(item.price)} <span className="text-slate-300">x</span> {item.quantity}</p>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
+                        <div className="text-left sm:text-right shrink-0 mt-2 sm:mt-0 pl-15 sm:pl-0">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest sm:hidden mb-0.5">Thành tiền</p>
                           <p className="font-black text-sm text-blue-600">{formatCurrency(item.price * item.quantity)}</p>
                         </div>
                       </div>
@@ -2503,6 +2674,15 @@ export function Orders() {
            )
         })}
       </div>
+      <AnimatePresence>
+        {orderToPay && (
+          <PaymentModal 
+            orderData={orderToPay} 
+            onClose={() => setOrderToPay(null)} 
+            onSuccess={() => setOrderToPay(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

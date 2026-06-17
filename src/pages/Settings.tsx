@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'react-hot-toast';
 import { 
   Building2, 
   Receipt, 
@@ -20,14 +21,21 @@ import {
   Phone,
   Image as ImageIcon,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  GripVertical,
+  Plus
 } from 'lucide-react';
 import { doc, getDoc, setDoc, onSnapshot } from '../lib/firebaseAdapter';
 import { ref, uploadBytesResumable, getDownloadURL } from '../lib/firebaseAdapter';
 import { db, storage } from '../lib/supabase';
 import { useAuth } from '../App';
 import { cn } from '../lib/utils';
+import { IconMap } from '../lib/icons';
+import { defaultNavItems } from '../lib/navigation';
 import { formatCurrency } from '../lib/utils';
+import { ActivityLogs } from './ActivityLogs';
+import { BackupRestoreTab } from './settings/BackupRestoreTab';
+import { SystemTrashTab } from './settings/SystemTrashTab';
 
 interface SystemSettings {
   business: {
@@ -65,6 +73,13 @@ interface SystemSettings {
   ui: {
     theme: 'light' | 'dark' | 'system';
     primaryColor: string;
+    autoThemeTimes?: { lightStart: string; darkStart: string };
+    sidebar?: {
+      backgroundColor: string;
+      parentMenuColor: string;
+      childMenuColor: string;
+    };
+    navigation?: any[];
   };
 }
 
@@ -108,23 +123,41 @@ const defaultSettings: SystemSettings = {
   },
   ui: {
     theme: 'light',
-    primaryColor: 'blue'
+    primaryColor: 'blue',
+    autoThemeTimes: { lightStart: '06:00', darkStart: '18:00' },
+    sidebar: {
+      backgroundColor: '#ffffff',
+      parentMenuColor: '#1e293b',
+      childMenuColor: '#64748b'
+    },
+    navigation: defaultNavItems
   }
 };
 
+import { useParams, useNavigate } from 'react-router-dom';
+import { InvoiceSettings } from './settings/InvoiceSettings';
+import { PaymentSettings } from './settings/PaymentSettings';
+
+// ... (interfaces and defaultSettings) ...
+
 const tabs = [
-  { id: 'business', label: 'Thông tin doanh nghiệp', icon: Building2 },
-  { id: 'invoice', label: 'Cài đặt hóa đơn', icon: Receipt },
-  { id: 'payment', label: 'Cài đặt thanh toán', icon: CreditCard },
+  { id: 'store', label: 'Cài đặt chung', icon: Building2 },
+  { id: 'payment', label: 'Cấu hình thanh toán', icon: CreditCard },
+  { id: 'invoice', label: 'Cấu hình hóa đơn', icon: Receipt },
   { id: 'inventory', label: 'Cài đặt kho', icon: Box },
-  { id: 'referral', label: 'Cài đặt Referral (Hoa hồng)', icon: Users },
+  { id: 'referral', label: 'Cài đặt Referral', icon: Users },
   { id: 'ui', label: 'Giao diện', icon: Palette },
+  { id: 'trash', label: 'Thùng rác', icon: AlertCircle },
   { id: 'logs', label: 'Nhật ký hệ thống', icon: Activity },
+  { id: 'backup', label: 'Sao lưu', icon: HardDrive },
+  { id: 'restore', label: 'Khôi phục', icon: RefreshCw },
 ];
 
 export function Settings() {
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState('business');
+  const { tab } = useParams();
+  const navigate = useNavigate();
+  const activeTab = tab || 'store';
   const [settings, setSettings] = useState<SystemSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -166,10 +199,11 @@ export function Settings() {
     try {
       await setDoc(doc(db, 'system_configs', 'global'), settings);
       setIsDirty(false);
+      toast.success('Cập nhật thành công');
       // Optional: Add activity log
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Không thể lưu cài đặt. Vui lòng thử lại.');
+      toast.error('Không thể lưu: ' + (err.message || String(err)));
     } finally {
       setSaving(false);
     }
@@ -306,20 +340,20 @@ export function Settings() {
           <div className="w-full md:w-72 shrink-0 bg-slate-50/50 border-b md:border-b-0 md:border-r border-slate-100 p-4 md:p-6 overflow-x-auto md:overflow-y-auto scrollbar-none">
             <h2 className="hidden md:block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 mb-4">Danh mục cài đặt</h2>
             <nav className="flex md:flex-col gap-2 md:gap-0 space-y-0 md:space-y-1 w-max md:w-auto pb-1 md:pb-0">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
+              {tabs.map((tabItem) => {
+                const Icon = tabItem.icon;
+                const isActive = activeTab === tabItem.id;
                 return (
                   <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    key={tabItem.id}
+                    onClick={() => navigate(`/settings/${tabItem.id}`)}
                     className={cn(
                       "flex-shrink-0 flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-4 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all whitespace-nowrap",
                       isActive ? "bg-white text-blue-600 shadow-sm border border-slate-200/60" : "text-slate-600 hover:bg-slate-100"
                     )}
                   >
                     <Icon className={cn("w-4 h-4 md:w-5 md:h-5", isActive ? "text-blue-600" : "text-slate-400")} />
-                    {tab.label}
+                    {tabItem.label}
                   </button>
                 );
               })}
@@ -339,8 +373,15 @@ export function Settings() {
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-10 bg-slate-50/30">
              <div className="max-w-4xl mx-auto space-y-8">
                 
+                {/* LOGS TAB */}
+                 {activeTab === 'logs' && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+                     <ActivityLogs />
+                  </motion.div>
+                 )}
+
                 {/* BUSINESS TAB */}
-                {activeTab === 'business' && (
+                {activeTab === 'store' && (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
                      <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-8">
                         <div>
@@ -349,8 +390,8 @@ export function Settings() {
                         </div>
                         
                         <div className="flex items-start gap-8 border-b border-slate-100 pb-8">
-                           <div className="relative">
-                              <div className={cn("w-32 h-32 rounded-3xl border-2 border-dashed flex items-center justify-center overflow-hidden bg-slate-50", !settings.business.logo ? "border-slate-300" : "border-emerald-500")}>
+                           <div className="relative flex flex-col items-center">
+                              <div className={cn("w-32 h-32 rounded-3xl border-2 border-dashed flex items-center justify-center overflow-hidden bg-slate-50 relative", !settings.business.logo ? "border-slate-300" : "border-emerald-500")}>
                                  {settings.business.logo ? (
                                     <img src={settings.business.logo} alt="Logo" className="w-full h-full object-contain p-2" />
                                  ) : (
@@ -359,8 +400,14 @@ export function Settings() {
                                        <p className="text-[10px] font-bold mt-2 uppercase tracking-tight">Upload Logo</p>
                                     </div>
                                  )}
+                                 <input type="file" title="Upload Logo" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                               </div>
-                              <input type="file" title="Upload Logo" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                              {settings.business.logo && (
+                                 <button className="mt-3 px-4 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 relative overflow-hidden">
+                                   Thay đổi
+                                   <input type="file" title="Upload Logo" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                 </button>
+                              )}
                               {uploadingLogo && (
                                 <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-3xl">
                                   <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
@@ -385,93 +432,16 @@ export function Settings() {
                 )}
 
                 {/* INVOICE TAB */}
-                {activeTab === 'invoice' && (
+                {activeTab === "invoice" && (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
-                     <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-8">
-                        <div>
-                           <h3 className="text-lg font-black text-slate-900 uppercase">Định dạng hóa đơn</h3>
-                           <p className="text-sm text-slate-500 font-medium">Cấu hình mẫu in và nội dung mặc định</p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                           {['A4', '80mm', '58mm'].map(size => (
-                              <button
-                                 key={size}
-                                 onClick={() => updateSetting('invoice', 'paperSize', size)}
-                                 className={cn(
-                                    "p-6 rounded-3xl border-2 text-center transition-all",
-                                    settings.invoice.paperSize === size ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-100 bg-white hover:border-slate-200"
-                                 )}
-                              >
-                                 <Receipt className={cn("w-8 h-8 mx-auto mb-2 opacity-80", settings.invoice.paperSize === size ? "text-blue-600" : "text-slate-400")} />
-                                 <span className="font-black text-sm block">GIẤY {size}</span>
-                              </button>
-                           ))}
-                        </div>
-
-                        <div className="space-y-4">
-                           {renderToggle("Hiển thị Logo trên hóa đơn", settings.invoice.showLogo, (val) => updateSetting('invoice', 'showLogo', val))}
-                        </div>
-                        
-                        <div className="space-y-4 border-t border-slate-100 pt-6">
-                           <div>
-                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 block mb-2">Chính sách đổi trả (In dưới hóa đơn)</label>
-                              <textarea
-                                 className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 min-h-[100px]"
-                                 placeholder="Ví dụ: Hóa đơn đỏ xuất trong ngày. Đổi trả trong 7 ngày..."
-                                 value={settings.invoice.returnPolicy}
-                                 onChange={(e) => updateSetting('invoice', 'returnPolicy', e.target.value)}
-                              />
-                           </div>
-                           {renderInput("Nội dung Footer (Lời cảm ơn)", Mail, settings.invoice.footerText, (val) => updateSetting('invoice', 'footerText', val))}
-                        </div>
-                     </div>
+                     <InvoiceSettings />
                   </motion.div>
                 )}
 
                 {/* PAYMENT TAB */}
-                {activeTab === 'payment' && (
+                {activeTab === "payment" && (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
-                     <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-8">
-                        <div>
-                           <h3 className="text-lg font-black text-slate-900 uppercase">Tùy chọn thanh toán</h3>
-                           <p className="text-sm text-slate-500 font-medium">Cấu hình các hình thức thu tiền hiển thị tại POS</p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                           <div className="space-y-4 bg-slate-50 p-6 rounded-[28px] border border-slate-100">
-                              <div className="flex items-center gap-3 text-slate-900 mb-4">
-                                 <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
-                                    <CreditCard className="w-5 h-5" />
-                                 </div>
-                                 <span className="font-black">TIỀN MẶT</span>
-                              </div>
-                              {renderToggle("Cho phép thu tiền mặt", settings.payment.allowCash, (val) => updateSetting('payment', 'allowCash', val))}
-                           </div>
-                           
-                           <div className="space-y-4 bg-slate-50 p-6 rounded-[28px] border border-slate-100">
-                              <div className="flex items-center gap-3 text-slate-900 mb-4">
-                                 <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
-                                    <Smartphone className="w-5 h-5" />
-                                 </div>
-                                 <span className="font-black">CHUYỂN KHOẢN & QR</span>
-                              </div>
-                              {renderToggle("Cho phép chuyển khoản", settings.payment.allowTransfer, (val) => updateSetting('payment', 'allowTransfer', val))}
-                           </div>
-                        </div>
-
-                        {settings.payment.allowTransfer && (
-                           <div className="bg-blue-50/50 p-8 rounded-[32px] border border-blue-100 space-y-6">
-                              <h4 className="font-black text-slate-900 uppercase flex items-center gap-2"><Globe className="w-5 h-5 text-blue-500" />Thông tin Ngân hàng (Dùng để tạo QR Code)</h4>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                 {renderInput("Tên ngân hàng (VD: Vietcombank, MB)", Building2, settings.payment.bankName, (val) => updateSetting('payment', 'bankName', val))}
-                                 {renderInput("Số tài khoản", CreditCard, settings.payment.bankAccountNumber, (val) => updateSetting('payment', 'bankAccountNumber', val))}
-                              </div>
-                              {renderInput("Tên chủ tài khoản", Users, settings.payment.bankAccountName, (val) => updateSetting('payment', 'bankAccountName', val))}
-                              {renderInput("Cú pháp chuyển khoản (Tự chèn mã ĐH)", Receipt, settings.payment.defaultTransferContent, (val) => updateSetting('payment', 'defaultTransferContent', val))}
-                           </div>
-                        )}
-                     </div>
+                     <PaymentSettings />
                   </motion.div>
                 )}
 
@@ -559,16 +529,45 @@ export function Settings() {
                            </h4>
                            <div className="space-y-3">
                               {(settings.referral?.tiers || []).map((tier, index) => (
-                                 <div key={index} className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                 <div 
+                                    key={index} 
+                                    draggable
+                                    onDragStart={(e) => {
+                                       e.dataTransfer.effectAllowed = 'move';
+                                       e.dataTransfer.setData('text/plain', index.toString());
+                                    }}
+                                    onDragOver={(e) => {
+                                       e.preventDefault();
+                                       e.dataTransfer.dropEffect = 'move';
+                                    }}
+                                    onDrop={(e) => {
+                                       e.preventDefault();
+                                       const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                                       const toIndex = index;
+                                       if (fromIndex !== toIndex && !isNaN(fromIndex)) {
+                                          const ts = [...(settings.referral?.tiers || [])];
+                                          const item = ts.splice(fromIndex, 1)[0];
+                                          ts.splice(toIndex, 0, item);
+                                          updateSetting('referral', 'tiers', ts);
+                                       }
+                                    }}
+                                    className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100"
+                                 >
+                                   <div className="cursor-move hover:text-blue-600 text-slate-400 p-1 active:cursor-grabbing">
+                                      <GripVertical className="w-5 h-5" />
+                                   </div>
                                    <div className="flex-1">
                                       <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block mb-1">Từ (VNĐ)</label>
                                       <input 
-                                         type="number" 
-                                         value={tier.min}
+                                         type="text" 
+                                         value={new Intl.NumberFormat('en-US').format(tier.min)}
                                          onChange={(e) => {
                                            const ts = [...(settings.referral?.tiers || [])];
-                                           ts[index].min = Number(e.target.value);
-                                           updateSetting('referral', 'tiers', ts);
+                                           const val = e.target.value.replace(/,/g, '');
+                                           if (!isNaN(Number(val))) {
+                                             ts[index].min = Number(val);
+                                             updateSetting('referral', 'tiers', ts);
+                                           }
                                          }}
                                          className="w-full bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none"
                                       />
@@ -577,12 +576,15 @@ export function Settings() {
                                    <div className="flex-1">
                                       <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block mb-1">Đến (VNĐ)</label>
                                       <input 
-                                         type="number" 
-                                         value={tier.max}
+                                         type="text" 
+                                         value={new Intl.NumberFormat('en-US').format(tier.max)}
                                          onChange={(e) => {
                                            const ts = [...(settings.referral?.tiers || [])];
-                                           ts[index].max = Number(e.target.value);
-                                           updateSetting('referral', 'tiers', ts);
+                                           const val = e.target.value.replace(/,/g, '');
+                                           if (!isNaN(Number(val))) {
+                                             ts[index].max = Number(val);
+                                             updateSetting('referral', 'tiers', ts);
+                                           }
                                          }}
                                          className="w-full bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none"
                                       />
@@ -626,44 +628,189 @@ export function Settings() {
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
                      <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-8">
                         <div>
-                           <h3 className="text-lg font-black text-slate-900 uppercase">Tùy biến hiển thị</h3>
-                           <p className="text-sm text-slate-500 font-medium">Giao diện sẽ áp dụng cho tất cả nhân viên</p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                           <div>
-                              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-4">Chế độ tối (Dark Mode)</h4>
-                              <div className="flex bg-slate-100 p-1 rounded-[20px] overflow-hidden">
-                                 {['light', 'dark', 'system'].map((t) => (
-                                    <button
-                                       key={t}
-                                       onClick={() => updateSetting('ui', 'theme', t)}
-                                       className={cn(
-                                          "flex-1 py-3 text-xs font-black uppercase rounded-[16px] transition-all",
-                                          settings.ui.theme === t ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:bg-slate-200/50"
-                                       )}
-                                    >
-                                       {t}
-                                    </button>
-                                 ))}
-                              </div>
+                           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-4">Chế độ tối (Dark Mode)</h4>
+                           <div className="flex bg-slate-100 p-1 rounded-[20px] overflow-hidden">
+                              {['light', 'dark', 'system'].map((t) => (
+                                 <button
+                                    key={t}
+                                    onClick={() => updateSetting('ui', 'theme', t)}
+                                    className={cn(
+                                       "flex-1 py-3 text-xs font-black uppercase rounded-[16px] transition-all",
+                                       settings.ui.theme === t ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:bg-slate-200/50"
+                                    )}
+                                 >
+                                    {t}
+                                 </button>
+                              ))}
                            </div>
+                           {settings.ui.theme === 'system' && (
+                             <div className="mt-4 grid grid-cols-2 gap-4">
+                               <div>
+                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2 block">Giờ Sáng</label>
+                                 <input 
+                                    type="time" 
+                                    value={settings.ui.autoThemeTimes?.lightStart || '06:00'} 
+                                    onChange={(e) => updateSetting('ui', 'autoThemeTimes', { ...settings.ui.autoThemeTimes, lightStart: e.target.value })}
+                                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                                 />
+                               </div>
+                               <div>
+                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2 block">Giờ Tối</label>
+                                 <input 
+                                    type="time" 
+                                    value={settings.ui.autoThemeTimes?.darkStart || '18:00'} 
+                                    onChange={(e) => updateSetting('ui', 'autoThemeTimes', { ...settings.ui.autoThemeTimes, darkStart: e.target.value })}
+                                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 outline-none"
+                                 />
+                               </div>
+                             </div>
+                           )}
+                        </div>
+
+                        <div className="pt-6 border-t border-slate-100">
+                           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-4">Phối màu Sidebar</h4>
+                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                             <div>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2 block">Màu nền</label>
+                               <div className="flex items-center gap-3">
+                                 <input type="color" value={settings.ui.sidebar?.backgroundColor || '#ffffff'} onChange={(e) => updateSetting('ui', 'sidebar', { ...settings.ui.sidebar, backgroundColor: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer" />
+                                 <span className="text-sm font-bold text-slate-700 uppercase">{settings.ui.sidebar?.backgroundColor || '#ffffff'}</span>
+                               </div>
+                             </div>
+                             <div>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2 block">Chữ Menu Cha</label>
+                               <div className="flex items-center gap-3">
+                                 <input type="color" value={settings.ui.sidebar?.parentMenuColor || '#1e293b'} onChange={(e) => updateSetting('ui', 'sidebar', { ...settings.ui.sidebar, parentMenuColor: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer" />
+                                 <span className="text-sm font-bold text-slate-700 uppercase">{settings.ui.sidebar?.parentMenuColor || '#1e293b'}</span>
+                               </div>
+                             </div>
+                             <div>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-2 block">Chữ Menu Con</label>
+                               <div className="flex items-center gap-3">
+                                 <input type="color" value={settings.ui.sidebar?.childMenuColor || '#64748b'} onChange={(e) => updateSetting('ui', 'sidebar', { ...settings.ui.sidebar, childMenuColor: e.target.value })} className="w-10 h-10 rounded-lg cursor-pointer" />
+                                 <span className="text-sm font-bold text-slate-700 uppercase">{settings.ui.sidebar?.childMenuColor || '#64748b'}</span>
+                               </div>
+                             </div>
+                           </div>
+                        </div>
+
+                        <div className="pt-6 border-t border-slate-100">
+                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 mb-4">Quản lý Menu</h4>
+                          <div className="space-y-4">
+                             {(settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems).map((navItem, index) => (
+                                <div key={index} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 relative group">
+                                   <div className="flex items-center gap-4">
+                                       <div className="flex flex-col gap-1">
+                                          <button 
+                                            onClick={() => {
+                                              if (index === 0) return;
+                                              const newNav = [...(settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems)];
+                                              const temp = newNav[index];
+                                              newNav[index] = newNav[index - 1];
+                                              newNav[index - 1] = temp;
+                                              updateSetting('ui', 'navigation', newNav);
+                                            }}
+                                            disabled={index === 0}
+                                            className="text-slate-300 hover:text-slate-500 disabled:opacity-30 disabled:hover:text-slate-300"
+                                          >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+                                          </button>
+                                          <button 
+                                            onClick={() => {
+                                              const navList = settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems;
+                                              if (index === navList.length - 1) return;
+                                              const newNav = [...navList];
+                                              const temp = newNav[index];
+                                              newNav[index] = newNav[index + 1];
+                                              newNav[index + 1] = temp;
+                                              updateSetting('ui', 'navigation', newNav);
+                                            }}
+                                            disabled={index === (settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems).length - 1}
+                                            className="text-slate-300 hover:text-slate-500 disabled:opacity-30 disabled:hover:text-slate-300"
+                                          >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                          </button>
+                                          <button 
+                                            onClick={() => {
+                                              const newNav = [...(settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems)];
+                                              newNav.splice(index, 1);
+                                              updateSetting('ui', 'navigation', newNav);
+                                            }}
+                                            className="text-rose-300 hover:text-rose-500 mt-2"
+                                          >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                          </button>
+                                       </div>
+                                       <div className="flex-1">
+                                         <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block mb-1">Tên Menu Cha</label>
+                                         <input type="text" value={navItem.name} onChange={(e) => {
+                                            const newNav = [...(settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems)];
+                                            newNav[index] = { ...newNav[index], name: e.target.value };
+                                            updateSetting('ui', 'navigation', newNav);
+                                         }} className="w-full bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold outline-none" />
+                                       </div>
+                                       <div>
+                                         <label className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block mb-1">Icon</label>
+                                         <select value={navItem.iconName} onChange={(e) => {
+                                            const newNav = [...(settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems)];
+                                            newNav[index] = { ...newNav[index], iconName: e.target.value };
+                                            updateSetting('ui', 'navigation', newNav);
+                                         }} className="bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold outline-none max-w-[150px]">
+                                           {Object.keys(IconMap).map(iconName => (
+                                             <option key={iconName} value={iconName}>{iconName}</option>
+                                           ))}
+                                         </select>
+                                       </div>
+                                   </div>
+                                   {navItem.subItems && navItem.subItems.length > 0 && (
+                                     <div className="mt-4 pl-10 space-y-2">
+                                       {navItem.subItems.map((sub: any, sIdx: number) => (
+                                         <div key={sIdx} className="flex items-center gap-4 relative">
+                                           <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-4 h-px bg-slate-300"></div>
+                                           <div className="absolute -left-6 -top-4 bottom-1/2 w-px bg-slate-300"></div>
+                                           <div className="flex-1">
+                                             <input type="text" value={sub.name} onChange={(e) => {
+                                                const newNav = JSON.parse(JSON.stringify(settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems));
+                                                newNav[index].subItems[sIdx].name = e.target.value;
+                                                updateSetting('ui', 'navigation', newNav);
+                                             }} className="w-full bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-sm outline-none focus:border-blue-500" />
+                                           </div>
+                                         </div>
+                                       ))}
+                                     </div>
+                                   )}
+                                </div>
+                             ))}
+                             <button
+                                onClick={() => {
+                                  const newNav = [...(settings.ui.navigation?.length ? settings.ui.navigation : defaultNavItems)];
+                                  newNav.push({
+                                    name: "MENU MỚI",
+                                    iconName: "LayoutDashboard",
+                                    path: "/new-menu",
+                                    module: "Hệ thống",
+                                    subItems: []
+                                  });
+                                  updateSetting('ui', 'navigation', newNav);
+                                }}
+                                className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-2"
+                             >
+                                <Plus size={16} /> Thêm Menu Cha
+                             </button>
+                          </div>
                         </div>
                      </div>
                   </motion.div>
                 )}
 
-                 {/* LOGS TAB */}
-                 {activeTab === 'logs' && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
-                     <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center py-20 text-slate-500">
-                        <Activity className="w-16 h-16 text-slate-300 mb-4" />
-                        <h3 className="text-lg font-black text-slate-900 uppercase">Nhật ký hoạt động hệ thống</h3>
-                        <p className="max-w-md mx-auto mt-2">Logs are securely stored via Firebase Audit Logging and can be exported for forensic analysis by Server Admins.</p>
-                        <button className="mt-6 px-6 py-3 bg-slate-100 text-slate-700 font-black text-xs uppercase tracking-widest rounded-xl hover:bg-slate-200">Export CSV</button>
-                     </div>
-                  </motion.div>
-                )}
+                 {/* TRASH TAB */}
+                 {activeTab === 'trash' && (
+                    <SystemTrashTab settings={settings} updateSetting={updateSetting} />
+                 )}
+
+                 {/* BACKUP & RESTORE TABS */}
+                 {activeTab === 'backup' && <BackupRestoreTab type="backup" />}
+                 {activeTab === 'restore' && <BackupRestoreTab type="restore" />}
              </div>
           </div>
         </div>

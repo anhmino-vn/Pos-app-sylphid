@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, orderBy, onSnapshot } from '../../lib/firebaseAdapter';
+import { collection, query, orderBy, onSnapshot, doc } from '../../lib/firebaseAdapter';
 import { db, Product, handleFirestoreError, OperationType } from '../../lib/supabase';
 import { DataTable } from '../../components/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
@@ -13,7 +13,7 @@ import { motion } from 'motion/react';
 
 type StockTab = 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
 
-const MIN_STOCK_THRESHOLD = 5;
+
 
 export function StockPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -21,6 +21,7 @@ export function StockPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<StockTab>('all');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [lowStockThreshold, setLowStockThreshold] = useState(10);
 
   useEffect(() => {
     const q = query(collection(db, 'products'), orderBy('name', 'asc'));
@@ -31,25 +32,36 @@ export function StockPage() {
       },
       err => handleFirestoreError(err, OperationType.LIST, 'products')
     );
-    return unsub;
+    const unsubSettings = onSnapshot(doc(db, 'system_configs', 'global'),
+      snap => {
+        if (snap.exists()) {
+           setLowStockThreshold(snap.data()?.inventory?.lowStockThreshold || 10);
+        }
+      }
+    );
+
+    return () => {
+      unsub();
+      unsubSettings();
+    };
   }, []);
 
   // KPIs
   const stats = useMemo(() => {
     const total = products.length;
-    const inStock = products.filter(p => (p.stock || 0) > MIN_STOCK_THRESHOLD).length;
-    const lowStock = products.filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= MIN_STOCK_THRESHOLD).length;
+    const inStock = products.filter(p => (p.stock || 0) > lowStockThreshold).length;
+    const lowStock = products.filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= lowStockThreshold).length;
     const outOfStock = products.filter(p => (p.stock || 0) <= 0).length;
     const totalValue = products.reduce((sum, p) => sum + ((p.listPrice || 0) * (p.stock || 0)), 0);
     return { total, inStock, lowStock, outOfStock, totalValue };
-  }, [products]);
+  }, [products, lowStockThreshold]);
 
   const filteredProducts = useMemo(() => {
     let list = products;
 
     // Tab filter
-    if (activeTab === 'in_stock') list = list.filter(p => (p.stock || 0) > MIN_STOCK_THRESHOLD);
-    else if (activeTab === 'low_stock') list = list.filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= MIN_STOCK_THRESHOLD);
+    if (activeTab === 'in_stock') list = list.filter(p => (p.stock || 0) > lowStockThreshold);
+    else if (activeTab === 'low_stock') list = list.filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= lowStockThreshold);
     else if (activeTab === 'out_of_stock') list = list.filter(p => (p.stock || 0) <= 0);
 
     // Search
@@ -62,7 +74,7 @@ export function StockPage() {
       );
     }
     return list;
-  }, [products, activeTab, searchTerm]);
+  }, [products, activeTab, searchTerm, lowStockThreshold]);
 
   const tabs: { id: StockTab; label: string; icon: any; count: number; color: string }[] = [
     { id: 'all', label: 'Tất cả', icon: Archive, count: stats.total, color: 'text-slate-600' },
@@ -99,7 +111,7 @@ export function StockPage() {
           <span className={cn(
             'px-2.5 py-1 rounded-full text-xs font-black',
             stock <= 0 ? 'bg-rose-100 text-rose-600' :
-            stock <= MIN_STOCK_THRESHOLD ? 'bg-amber-100 text-amber-700' :
+            stock <= lowStockThreshold ? 'bg-amber-100 text-amber-700' :
             'bg-emerald-100 text-emerald-700'
           )}>
             {stock}
@@ -125,12 +137,12 @@ export function StockPage() {
       header: 'Trạng thái',
       cell: ({ row }) => {
         const stock = (row.original.stock || 0);
-        const label = stock <= 0 ? 'Hết hàng' : stock <= MIN_STOCK_THRESHOLD ? 'Sắp hết' : 'Còn hàng';
-        const cls = stock <= 0 ? 'bg-rose-100 text-rose-700' : stock <= MIN_STOCK_THRESHOLD ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+        const label = stock <= 0 ? 'Hết hàng' : stock <= lowStockThreshold ? 'Sắp hết' : 'Còn hàng';
+        const cls = stock <= 0 ? 'bg-rose-100 text-rose-700' : stock <= lowStockThreshold ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
         return <span className={cn('px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest', cls)}>{label}</span>;
       }
     }
-  ], []);
+  ], [lowStockThreshold]);
 
   return (
     <div className="flex flex-col h-full bg-[#F1F5F9]">

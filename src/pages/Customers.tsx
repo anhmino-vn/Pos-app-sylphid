@@ -50,7 +50,8 @@ import {
   ChevronDown,
   Printer,
   FileText,
-  Upload
+  Upload,
+  CreditCard
 } from 'lucide-react';
 import { formatDate, formatCurrency, cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -232,7 +233,7 @@ export function Customers() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const activeCustomers = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Customer))
-        .filter((c: any) => c.status !== 'inactive' && !c.deletedAt && !c.deleted_at && !c.hidden);
+        .filter((c: any) => c.status !== 'inactive' && !c.deletedAt && !c.deleted_at && !c.hidden && !c.is_deleted);
         
       const unique = new Map<string, Customer>();
       activeCustomers.forEach(c => {
@@ -324,7 +325,20 @@ export function Customers() {
         const batch = writeBatch(db);
         const customerRef = doc(db, 'customers', editingId);
         const dataToSave = { ...formData };
-        delete (dataToSave as any).code;
+        if (!dataToSave.code) {
+           const usedNumbers = new Set<number>();
+           rawCustomers.forEach(c => {
+              const code = (c as any).code;
+              if (code && typeof code === 'string' && code.startsWith('KH')) {
+                 const num = parseInt(code.substring(2), 10);
+                 if (!isNaN(num)) usedNumbers.add(num);
+              }
+           });
+           let nextNum = 1;
+           while (usedNumbers.has(nextNum)) nextNum++;
+           (dataToSave as any).code = `KH${nextNum.toString().padStart(4, '0')}`;
+        }
+
         if (!dataToSave.email) dataToSave.email = null as any;
         if (!dataToSave.phone) dataToSave.phone = null as any;
         delete (dataToSave as any).inChargeStaff;
@@ -352,7 +366,20 @@ export function Customers() {
         await batch.commit();
       } else {
         const dataToSave = { ...formData };
-        delete (dataToSave as any).code;
+        if (!dataToSave.code) {
+           const usedNumbers = new Set<number>();
+           rawCustomers.forEach(c => {
+              const code = (c as any).code;
+              if (code && typeof code === 'string' && code.startsWith('KH')) {
+                 const num = parseInt(code.substring(2), 10);
+                 if (!isNaN(num)) usedNumbers.add(num);
+              }
+           });
+           let nextNum = 1;
+           while (usedNumbers.has(nextNum)) nextNum++;
+           (dataToSave as any).code = `KH${nextNum.toString().padStart(4, '0')}`;
+        }
+
         if (!dataToSave.email) dataToSave.email = null as any;
         if (!dataToSave.phone) dataToSave.phone = null as any;
         delete (dataToSave as any).inChargeStaff;
@@ -598,12 +625,30 @@ export function Customers() {
            const customer = customers.find(c => c.id === id);
            if (!customer) continue;
            await updateDoc(doc(db, 'customers', id), {
+              is_deleted: true,
+              deleted_by: profile?.id || null,
               deleted_at: serverTimestamp(),
               deletedAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
+              updatedAt: serverTimestamp(),
+              code: null
            });
            deleted++;
         }
+        
+        try {
+           const { logActivity } = await import('../lib/activityUtils');
+           await logActivity(
+             { uid: profile?.id || profile?.uid || '', email: profile?.email || '', name: profile?.displayName || '' },
+             'Khách hàng',
+             'Xóa nhiều khách hàng',
+             `Đã xóa ${deleted} khách hàng`,
+             'danger',
+             { deletedIds: selectedIds }
+           );
+        } catch (e) {
+           console.error('Failed to log activity', e);
+        }
+        
         toast.success(`Đã xóa mềm ${deleted} khách hàng`);
         setSelectedIds([]);
       } catch (error) {
@@ -620,10 +665,28 @@ export function Customers() {
 
     try {
         await updateDoc(doc(db, 'customers', customer.id!), {
+            is_deleted: true,
+            deleted_by: profile?.id || null,
             deleted_at: serverTimestamp(),
             deletedAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
+            updatedAt: serverTimestamp(),
+            code: null
         });
+        
+        try {
+           const { logActivity } = await import('../lib/activityUtils');
+           await logActivity(
+             { uid: profile?.id || profile?.uid || '', email: profile?.email || '', name: profile?.displayName || '' },
+             'Khách hàng',
+             'Xóa khách hàng',
+             `Đã xóa khách hàng: ${customer.name || customer.phone || customer.id}`,
+             'danger',
+             customer
+           );
+        } catch (e) {
+           console.error('Failed to log activity', e);
+        }
+        
         toast.success('Đã xóa khách hàng thành công');
     } catch (error) {
         toast.error('Lỗi khi xóa khách hàng!');
@@ -1671,7 +1734,7 @@ export function Customers() {
       <AnimatePresence>
         {viewingOrder && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setViewingOrder(null)} className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[60]" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setViewingOrder(null)} className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[100]" />
             <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed right-0 top-0 bottom-0 w-full max-w-lg bg-white shadow-2xl z-[70] flex flex-col">
               <div className="p-8 border-b border-slate-50 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-4">

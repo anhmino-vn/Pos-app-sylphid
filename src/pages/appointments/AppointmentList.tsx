@@ -8,7 +8,7 @@ import {
   Plus, Search, Filter, Calendar, Clock, User, Phone, Briefcase, Home,
   Eye, Edit2, Trash2, CheckCircle, XCircle, ChevronDown, Download,
   MoreVertical, RefreshCw, LogIn, LogOut, LayoutList, CalendarDays,
-  Users, AlertTriangle
+  Users, AlertTriangle, CheckSquare, Square, Trash, RotateCcw, XOctagon
 } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, parseISO, startOfDay } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -41,17 +41,26 @@ export function AppointmentList() {
   const [cancelModal, setCancelModal] = useState<{ open: boolean; id: string; reason: string }>({ open: false, id: '', reason: '' });
   const [processing, setProcessing] = useState<string | null>(null);
 
+  // Bulk select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [permanentDeleteModal, setPermanentDeleteModal] = useState<{ open: boolean; ids: string[] }>({ open: false, ids: [] });
+
   // Fetch data
   useEffect(() => {
     fetchAppointments();
     fetchStaff();
 
-    // Realtime subscription
     const channel = supabase.channel('appointments-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => fetchAppointments())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  // Clear selection when tab changes
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeTab]);
 
   const fetchAppointments = async () => {
     try {
@@ -62,7 +71,6 @@ export function AppointmentList() {
         .order('start_time', { ascending: true });
 
       if (error) throw error;
-      // Map snake_case → camelCase
       setAppointments((data || []).map(mapRow));
     } catch (e) {
       console.error(e);
@@ -149,7 +157,26 @@ export function AppointmentList() {
     });
   }, [appointments, activeTab, searchQuery, filterStatus, filterStaff, filterDate]);
 
-  // Actions
+  // ── Selection helpers ──────────────────────────────────────────────────────
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(a => a.id!)));
+    }
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // ── Individual actions ────────────────────────────────────────────────────
   const handleCheckin = async (a: Appointment) => {
     setProcessing(a.id!);
     try {
@@ -224,6 +251,100 @@ export function AppointmentList() {
     fetchAppointments();
   };
 
+  const handlePermanentDelete = async (ids: string[]) => {
+    setBulkProcessing(true);
+    try {
+      for (const id of ids) {
+        await supabase.from('appointments').delete().eq('id', id);
+      }
+      toast.success(`Đã xóa vĩnh viễn ${ids.length} lịch hẹn!`);
+      clearSelection();
+      fetchAppointments();
+    } catch { toast.error('Có lỗi xảy ra!'); }
+    setBulkProcessing(false);
+    setPermanentDeleteModal({ open: false, ids: [] });
+  };
+
+  // ── Bulk actions ──────────────────────────────────────────────────────────
+  const handleBulkRestore = async () => {
+    setBulkProcessing(true);
+    const ids = [...selectedIds];
+    try {
+      for (const id of ids) {
+        await supabase.from('appointments').update({ deleted_at: null }).eq('id', id);
+      }
+      toast.success(`Đã khôi phục ${ids.length} lịch hẹn!`);
+      clearSelection();
+      fetchAppointments();
+    } catch { toast.error('Có lỗi xảy ra!'); }
+    setBulkProcessing(false);
+  };
+
+  const handleBulkSoftDelete = async () => {
+    if (!confirm(`Chuyển ${selectedIds.size} lịch hẹn vào thùng rác?`)) return;
+    setBulkProcessing(true);
+    const ids = [...selectedIds];
+    try {
+      for (const id of ids) {
+        await supabase.from('appointments').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+      }
+      toast.success(`Đã chuyển ${ids.length} lịch hẹn vào thùng rác!`);
+      clearSelection();
+      fetchAppointments();
+    } catch { toast.error('Có lỗi xảy ra!'); }
+    setBulkProcessing(false);
+  };
+
+  const handleBulkConfirm = async () => {
+    setBulkProcessing(true);
+    const ids = [...selectedIds];
+    try {
+      for (const id of ids) {
+        await supabase.from('appointments').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', id);
+      }
+      toast.success(`Đã xác nhận ${ids.length} lịch hẹn!`);
+      clearSelection();
+      fetchAppointments();
+    } catch { toast.error('Có lỗi xảy ra!'); }
+    setBulkProcessing(false);
+  };
+
+  const handleBulkCheckin = async () => {
+    setBulkProcessing(true);
+    const ids = [...selectedIds];
+    try {
+      for (const id of ids) {
+        await supabase.from('appointments').update({
+          status: 'in_progress',
+          checkin_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('id', id);
+      }
+      toast.success(`Đã check-in ${ids.length} lịch hẹn!`);
+      clearSelection();
+      fetchAppointments();
+    } catch { toast.error('Có lỗi xảy ra!'); }
+    setBulkProcessing(false);
+  };
+
+  const handleBulkComplete = async () => {
+    setBulkProcessing(true);
+    const ids = [...selectedIds];
+    try {
+      for (const id of ids) {
+        await supabase.from('appointments').update({
+          status: 'completed',
+          checkout_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq('id', id);
+      }
+      toast.success(`Đã hoàn thành ${ids.length} lịch hẹn!`);
+      clearSelection();
+      fetchAppointments();
+    } catch { toast.error('Có lỗi xảy ra!'); }
+    setBulkProcessing(false);
+  };
+
   const logAction = async (appointmentId: string, action: string, oldValues: any, newValues: any) => {
     await supabase.from('appointment_logs').insert({
       appointment_id: appointmentId,
@@ -252,6 +373,10 @@ export function AppointmentList() {
     if (key === 'trash') return appointments.filter(a => !!a.deletedAt).length;
     return appointments.filter(a => !a.deletedAt).length;
   };
+
+  const allSelected = filtered.length > 0 && selectedIds.size === filtered.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < filtered.length;
+  const isTrash = activeTab === 'trash';
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-full overflow-hidden">
@@ -392,9 +517,116 @@ export function AppointmentList() {
         )}
       </AnimatePresence>
 
-      {/* Summary row */}
-      <div className="text-xs font-bold text-slate-500">
-        Hiển thị <span className="text-slate-900">{filtered.length}</span> lịch hẹn
+      {/* Summary row + Select All + Bulk Actions */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          {/* Select All Checkbox */}
+          <button
+            onClick={toggleSelectAll}
+            className={cn(
+              'flex items-center justify-center w-5 h-5 rounded border-2 transition-all shrink-0',
+              allSelected ? 'bg-teal-600 border-teal-600 text-white' :
+              someSelected ? 'bg-teal-100 border-teal-400' :
+              'border-slate-300 hover:border-teal-400'
+            )}
+          >
+            {allSelected && <CheckSquare className="w-3 h-3" />}
+            {someSelected && <div className="w-2 h-0.5 bg-teal-600 rounded" />}
+          </button>
+
+          <span className="text-xs font-bold text-slate-500">
+            {selectedIds.size > 0
+              ? <><span className="text-teal-700">{selectedIds.size}</span> / {filtered.length} đã chọn</>
+              : <>Hiển thị <span className="text-slate-900">{filtered.length}</span> lịch hẹn</>
+            }
+          </span>
+
+          {selectedIds.size > 0 && (
+            <button onClick={clearSelection} className="text-xs text-slate-400 hover:text-slate-600 font-bold">
+              Bỏ chọn
+            </button>
+          )}
+        </div>
+
+        {/* Bulk Action Bar */}
+        <AnimatePresence>
+          {selectedIds.size > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="flex flex-wrap items-center gap-2 p-3 bg-teal-50 border border-teal-200 rounded-xl"
+            >
+              <span className="text-xs font-black text-teal-800 mr-1">
+                {selectedIds.size} lịch hẹn đã chọn:
+              </span>
+
+              {isTrash ? (
+                <>
+                  <button
+                    onClick={handleBulkRestore}
+                    disabled={bulkProcessing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-all disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Khôi phục ({selectedIds.size})
+                  </button>
+                  <button
+                    onClick={() => setPermanentDeleteModal({ open: true, ids: [...selectedIds] })}
+                    disabled={bulkProcessing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all disabled:opacity-50"
+                  >
+                    <XOctagon className="w-3 h-3" />
+                    Xóa vĩnh viễn ({selectedIds.size})
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleBulkConfirm}
+                    disabled={bulkProcessing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-3 h-3" />
+                    Xác nhận
+                  </button>
+                  <button
+                    onClick={handleBulkCheckin}
+                    disabled={bulkProcessing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-all disabled:opacity-50"
+                  >
+                    <LogIn className="w-3 h-3" />
+                    Check-in
+                  </button>
+                  <button
+                    onClick={handleBulkComplete}
+                    disabled={bulkProcessing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all disabled:opacity-50"
+                  >
+                    <CheckSquare className="w-3 h-3" />
+                    Hoàn thành
+                  </button>
+                  <button
+                    onClick={() => setCancelModal({ open: true, id: '__bulk__', reason: '' })}
+                    disabled={bulkProcessing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-all disabled:opacity-50"
+                  >
+                    <XCircle className="w-3 h-3" />
+                    Hủy
+                  </button>
+                  <button
+                    onClick={handleBulkSoftDelete}
+                    disabled={bulkProcessing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Xóa ({selectedIds.size})
+                  </button>
+                </>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* List */}
@@ -416,16 +648,31 @@ export function AppointmentList() {
             {filtered.map((appt) => {
               const sc = APPOINTMENT_STATUS_COLORS[appt.status];
               const isProcessingThis = processing === appt.id;
+              const isSelected = selectedIds.has(appt.id!);
               return (
                 <motion.div
                   key={appt.id}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.98 }}
-                  className="bg-white border border-slate-200 rounded-xl hover:shadow-sm transition-all"
+                  className={cn(
+                    'bg-white border rounded-xl hover:shadow-sm transition-all',
+                    isSelected ? 'border-teal-400 bg-teal-50/30' : 'border-slate-200'
+                  )}
                 >
                   <div className="p-4">
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => toggleSelect(appt.id!)}
+                        className={cn(
+                          'flex items-center justify-center w-5 h-5 mt-0.5 rounded border-2 transition-all shrink-0',
+                          isSelected ? 'bg-teal-600 border-teal-600 text-white' : 'border-slate-300 hover:border-teal-400'
+                        )}
+                      >
+                        {isSelected && <CheckSquare className="w-3 h-3" />}
+                      </button>
+
                       {/* Left: Info */}
                       <div className="flex gap-3 min-w-0 flex-1">
                         {/* Color bar */}
@@ -486,13 +733,24 @@ export function AppointmentList() {
 
                       {/* Right: Actions */}
                       <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                        {activeTab === 'trash' ? (
-                          <button onClick={() => handleRestore(appt.id!)} className="text-xs font-bold px-3 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-all">
-                            Khôi phục
-                          </button>
+                        {isTrash ? (
+                          <>
+                            <button
+                              onClick={() => handleRestore(appt.id!)}
+                              className="text-xs font-bold px-3 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-all"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => setPermanentDeleteModal({ open: true, ids: [appt.id!] })}
+                              className="text-xs font-bold px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 transition-all"
+                              title="Xóa vĩnh viễn"
+                            >
+                              <XOctagon className="w-3 h-3" />
+                            </button>
+                          </>
                         ) : (
                           <>
-                            {/* Status-based actions */}
                             {appt.status === 'pending' && (
                               <button
                                 disabled={isProcessingThis}
@@ -554,7 +812,7 @@ export function AppointmentList() {
         </div>
       )}
 
-      {/* Cancel Modal */}
+      {/* Cancel Modal (single or bulk) */}
       <AnimatePresence>
         {cancelModal.open && (
           <motion.div
@@ -570,7 +828,9 @@ export function AppointmentList() {
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl"
             >
-              <h2 className="text-lg font-black text-slate-900 mb-1">Hủy lịch hẹn</h2>
+              <h2 className="text-lg font-black text-slate-900 mb-1">
+                {cancelModal.id === '__bulk__' ? `Hủy ${selectedIds.size} lịch hẹn` : 'Hủy lịch hẹn'}
+              </h2>
               <p className="text-sm text-slate-500 mb-4">Vui lòng nhập lý do hủy để lưu lịch sử.</p>
               <textarea
                 value={cancelModal.reason}
@@ -587,11 +847,76 @@ export function AppointmentList() {
                   Đóng
                 </button>
                 <button
-                  onClick={handleCancelSubmit}
-                  disabled={!cancelModal.reason.trim() || !!processing}
+                  onClick={async () => {
+                    if (cancelModal.id === '__bulk__') {
+                      // Bulk cancel
+                      setBulkProcessing(true);
+                      const ids = [...selectedIds];
+                      try {
+                        for (const id of ids) {
+                          await supabase.from('appointments').update({
+                            status: 'cancelled',
+                            cancel_reason: cancelModal.reason,
+                            updated_at: new Date().toISOString(),
+                          }).eq('id', id);
+                        }
+                        toast.success(`Đã hủy ${ids.length} lịch hẹn!`);
+                        clearSelection();
+                        fetchAppointments();
+                      } catch { toast.error('Có lỗi xảy ra!'); }
+                      setBulkProcessing(false);
+                      setCancelModal({ open: false, id: '', reason: '' });
+                    } else {
+                      handleCancelSubmit();
+                    }
+                  }}
+                  disabled={!cancelModal.reason.trim() || !!processing || bulkProcessing}
                   className="flex-1 py-2.5 font-bold text-sm text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all disabled:opacity-50"
                 >
                   Xác nhận hủy
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Permanent Delete Confirm Modal */}
+      <AnimatePresence>
+        {permanentDeleteModal.open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl"
+            >
+              <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <XOctagon className="w-6 h-6 text-rose-600" />
+              </div>
+              <h2 className="text-lg font-black text-slate-900 mb-2 text-center">Xóa vĩnh viễn</h2>
+              <p className="text-sm text-slate-500 text-center mb-6">
+                Bạn sắp xóa vĩnh viễn <strong>{permanentDeleteModal.ids.length}</strong> lịch hẹn.
+                Thao tác này <strong className="text-rose-600">không thể hoàn tác</strong>.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPermanentDeleteModal({ open: false, ids: [] })}
+                  className="flex-1 py-2.5 font-bold text-sm text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={() => handlePermanentDelete(permanentDeleteModal.ids)}
+                  disabled={bulkProcessing}
+                  className="flex-1 py-2.5 font-bold text-sm text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all disabled:opacity-50"
+                >
+                  {bulkProcessing ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
                 </button>
               </div>
             </motion.div>

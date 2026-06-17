@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product, ProductVariant, Brand, ProductCategory } from '../lib/supabase';
-import { db } from '../lib/supabase';
+import { db, supabase } from '../lib/supabase';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, query, where, getDocs } from '../lib/firebaseAdapter';
 import { X, Plus, Trash2, Loader2, RefreshCw, Image as ImageIcon, Save } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -71,10 +71,31 @@ export function ProductFormModal({ isOpen, onClose, editingId, initialData, cate
 
   if (!isOpen) return null;
 
-  const generateSKU = () => {
-    const random = Math.floor(1000 + Math.random() * 9000);
-    const prefix = formData.categoryId ? categories.find(c => c.id === formData.categoryId)?.name?.slice(0, 3).toUpperCase() : 'PRO';
-    setFormData(prev => ({ ...prev, sku: `${prefix || 'PRO'}-${random}` }));
+  const generateSKU = async () => {
+    try {
+      const { data } = await supabase.from('products').select('sku').ilike('sku', 'SP%');
+      const skus = data?.map(d => d.sku) || [];
+      const numbers = skus
+        .map(sku => parseInt(sku.replace(/^SP0*/i, ''), 10))
+        .filter(n => !isNaN(n))
+        .sort((a, b) => a - b);
+
+      let nextNum = 1;
+      for (const n of numbers) {
+        if (n === nextNum) {
+          nextNum++;
+        } else if (n > nextNum) {
+          break;
+        }
+      }
+      const nextSku = `SP${nextNum.toString().padStart(4, '0')}`;
+      setFormData(prev => ({ ...prev, sku: nextSku }));
+    } catch (e) {
+      console.error(e);
+      // Fallback
+      const random = Math.floor(1000 + Math.random() * 9000);
+      setFormData(prev => ({ ...prev, sku: `SP${random}` }));
+    }
   };
 
   const generateBarcode = () => {
@@ -167,6 +188,16 @@ export function ProductFormModal({ isOpen, onClose, editingId, initialData, cate
     try {
       if (!formData.name) throw new Error('Tên sản phẩm là bắt buộc');
       
+      if (formData.sku) {
+        const { data } = await supabase.from('products').select('id, sku').eq('sku', formData.sku);
+        if (data && data.length > 0) {
+          const isDuplicate = data.some((d: any) => d.id !== editingId);
+          if (isDuplicate) {
+            throw new Error('Mã sản phẩm đã tồn tại');
+          }
+        }
+      }
+      
       let productId = editingId;
 
       const productPayload = {
@@ -219,7 +250,7 @@ export function ProductFormModal({ isOpen, onClose, editingId, initialData, cate
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -293,7 +324,7 @@ export function ProductFormModal({ isOpen, onClose, editingId, initialData, cate
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5 px-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
-                      Mã SKU 
+                      Mã Sản Phẩm 
                       <button type="button" onClick={generateSKU} className="text-blue-600 hover:underline flex items-center gap-1 font-black">
                         <RefreshCw className="w-3 h-3" /> <span className="hidden sm:inline">Tự động</span>
                       </button>
@@ -303,7 +334,7 @@ export function ProductFormModal({ isOpen, onClose, editingId, initialData, cate
                       type="text" 
                       value={formData.sku}
                       onChange={e => setFormData({ ...formData, sku: e.target.value })}
-                      placeholder="SKU-XXXX"
+                      placeholder="SP0001"
                       className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500/10 outline-none font-black text-slate-900 transition-all text-sm"
                     />
                   </div>

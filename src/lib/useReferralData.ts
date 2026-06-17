@@ -4,7 +4,21 @@ import { db, Customer, Order } from './supabase';
 
 export interface ReferralSettings {
   commissionMethod: "PER_ORDER" | "TOTAL_REVENUE";
-  commissionPercent: number;
+  commissionPercent?: number;
+  tiers?: { min: number; max: number; percent: number }[];
+}
+
+export function calculateProgressiveCommission(amount: number, tiers?: { min: number; max: number; percent: number }[]) {
+  if (!tiers || tiers.length === 0) return 0;
+  
+  let totalCommission = 0;
+  for (const tier of tiers) {
+    if (amount <= tier.min) continue;
+    const applicableAmount = Math.min(amount, tier.max) - tier.min;
+    totalCommission += applicableAmount * (tier.percent / 100);
+  }
+  
+  return totalCommission;
 }
 
 export interface ReferrerData {
@@ -22,7 +36,7 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
   const [orders, setOrders] = useState<Order[]>([]);
   const [settings, setSettings] = useState<ReferralSettings>({
     commissionMethod: "PER_ORDER",
-    commissionPercent: 5,
+    tiers: []
   });
   const [loading, setLoading] = useState(true);
 
@@ -164,7 +178,15 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
         
         // Sum commission if it's eligible and computed on order
         if (o.commissionEligible !== false) {
-           const commAmount = o.commissionAmount || 0;
+           let commAmount = o.commissionAmount || 0;
+           // If we recalculate on the fly for PER_ORDER based on current settings
+           if (settings.commissionMethod === "PER_ORDER") {
+              if (settings.tiers && settings.tiers.length > 0) {
+                 commAmount = calculateProgressiveCommission(o.totalAmount || 0, settings.tiers);
+              } else {
+                 commAmount = (o.totalAmount || 0) * ((settings.commissionPercent || 0) / 100);
+              }
+           }
            totalComm += commAmount;
            if (o.commissionStatus === 'paid') {
               paidComm += commAmount;
@@ -181,7 +203,11 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
       // but the prompt says they "Lưu cấu hình" and "Đồng bộ", implying values are on the orders.
       // But if Method = TOTAL_REVENUE, then total commission = totalRev * (percent/100).
       if (settings.commissionMethod === "TOTAL_REVENUE") {
-         data.totalCommission = totalRev * (settings.commissionPercent / 100);
+         if (settings.tiers && settings.tiers.length > 0) {
+            data.totalCommission = calculateProgressiveCommission(totalRev, settings.tiers);
+         } else {
+            data.totalCommission = totalRev * ((settings.commissionPercent || 0) / 100);
+         }
          data.paidCommission = paidComm;
          data.unpaidCommission = Math.max(0, data.totalCommission - paidComm);
       } else {
@@ -191,9 +217,17 @@ export function useReferralData(dateRange?: { startDate: Date | null, endDate: D
       }
     });
 
+    let filteredOrders = orders;
+    if (dateRange?.startDate && dateRange?.endDate) {
+       filteredOrders = orders.filter(o => {
+           const od = o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt || 0);
+           return od >= dateRange.startDate! && od <= dateRange.endDate!;
+       });
+    }
+
     return {
       allCustomers: customers,
-      allOrders: orders,
+      allOrders: filteredOrders,
       customerMap,
       spendPerCustomer,
       ordersPerCustomer,

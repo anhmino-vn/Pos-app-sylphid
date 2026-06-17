@@ -9,13 +9,13 @@ import { cn } from '../../lib/utils';
 
 const defaultPermissions: UserPermissions = {
   products: { view: false, add: false, edit: false, delete: false },
-  orders: { view: false, add: false, edit: false, delete: false },
+  orders: { view: false, add: false, edit: false, delete: false, exportExcel: false, exportPdf: false },
   stock: { view: false, import: false, export: false },
-  customers: { view: false, edit: false },
+  customers: { view: false, add: false, edit: false, delete: false },
   reports: { view: false },
   services: { view: false, add: false, edit: false, delete: false },
   documents: { view: false, add: false, edit: false, delete: false, print: false },
-  staff: { view: false, add: false, edit: false },
+  staff: { view: false, add: false, edit: false, delete: false },
   settings: { view: false, edit: false }
 };
 
@@ -112,7 +112,7 @@ export function Roles() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 max-w-[1400px] mx-auto pb-20">
       <div className="flex items-center justify-between">
          <div>
             <h2 className="text-lg font-black text-slate-900 uppercase">Vai trò & Phân quyền</h2>
@@ -217,6 +217,8 @@ export function Roles() {
                                                  action === 'edit' ? 'Sửa' :
                                                  action === 'delete' ? 'Xóa' :
                                                  action === 'print' ? 'In ấn' :
+                                                 action === 'exportExcel' ? 'Xuất Excel' :
+                                                 action === 'exportPdf' ? 'Xuất PDF' :
                                                  action === 'import' ? 'Nhập kho' :
                                                  action === 'export' ? 'Xuất kho' : action}
                                              </span>

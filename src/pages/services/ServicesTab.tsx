@@ -184,7 +184,7 @@ export function ServicesTab() {
           <div className="flex items-center justify-end gap-2">
             {canEdit && (
               <button 
-                onClick={(e) => { e.stopPropagation(); setEditingId(row.original.id!); setInitialData(undefined); setIsModalOpen(true); }}
+                onClick={(e) => { e.stopPropagation(); setEditingId(row.original.id!); setInitialData(row.original); setIsModalOpen(true); }}
                 className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors"
                 title="Chỉnh sửa"
               >
@@ -282,7 +282,7 @@ export function ServicesTab() {
             data={filteredServices} 
             onRowClick={(row) => {
                setEditingId(row.id!);
-               setInitialData(row);
+               setInitialData(row.original);
                setIsModalOpen(true);
             }}
           />

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useReferralData, ReferrerData } from '../../lib/useReferralData';
+import { useReferralData, ReferrerData, calculateProgressiveCommission } from '../../lib/useReferralData';
 import {
   Users, Search, Award, DollarSign, Loader2, ChevronRight, ChevronLeft,
   Download, Settings as SettingsIcon, CheckSquare, Square, UserPlus, Plus,
@@ -94,6 +94,82 @@ export function Referrers() {
   const { dateRange } = useDateFilterStore();
   const { referrersMap, loading, allCustomers, allOrders, settings } = useReferralData(dateRange);
 
+
+  // ── Chart Data ──────────────────────────────────────────────────────────
+  const chartData = useMemo(() => {
+    let isDaily = false;
+    if (dateRange.startDate && dateRange.endDate) {
+      const diffTime = Math.abs(dateRange.endDate.getTime() - dateRange.startDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays <= 31) isDaily = true;
+    }
+
+    const labels: string[] = [];
+    const data1: number[] = [];
+    const data2: number[] = [];
+    
+    if (isDaily && dateRange.startDate && dateRange.endDate) {
+       let d = new Date(dateRange.startDate);
+       d.setHours(0,0,0,0);
+       const end = new Date(dateRange.endDate);
+       end.setHours(23,59,59,999);
+       while (d <= end) {
+          labels.push(`${d.getDate()}/${d.getMonth()+1}`);
+          data1.push(0);
+          data2.push(0);
+          d.setDate(d.getDate() + 1);
+       }
+       allOrders.forEach((o: any) => {
+         if (!o.referredById || o.commissionEligible === false) return;
+         const od = o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt || 0);
+         if (od >= dateRange.startDate! && od <= dateRange.endDate!) {
+            const diffTime = Math.abs(od.getTime() - dateRange.startDate!.getTime());
+            const idx = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            if (idx >= 0 && idx < data1.length) {
+               data1[idx] += (o.totalAmount || 0);
+            }
+         }
+         const prevStart = new Date(dateRange.startDate);
+         prevStart.setMonth(prevStart.getMonth() - 1);
+         const prevEnd = new Date(dateRange.endDate);
+         prevEnd.setMonth(prevEnd.getMonth() - 1);
+         if (od >= prevStart && od <= prevEnd) {
+            const diffTime = Math.abs(od.getTime() - prevStart.getTime());
+            const idx = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            if (idx >= 0 && idx < data2.length) {
+               data2[idx] += (o.totalAmount || 0);
+            }
+         }
+       });
+    } else {
+       for (let i = 0; i < 12; i++) {
+         labels.push(`T${i + 1}`);
+         data1.push(0);
+         data2.push(0);
+       }
+       const targetYear = dateRange.startDate ? dateRange.startDate.getFullYear() : new Date().getFullYear();
+       allOrders.forEach((o: any) => {
+         if (!o.referredById || o.commissionEligible === false) return;
+         const od = o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt || 0);
+         const year = od.getFullYear();
+         const month = od.getMonth();
+         if (year === targetYear) data1[month] += (o.totalAmount || 0);
+         if (year === targetYear - 1) data2[month] += (o.totalAmount || 0);
+       });
+    }
+
+    const maxVal = Math.max(...data1, ...data2, 1);
+    return { 
+      labels, 
+      data1: data1.map(v => (v / maxVal) * 100), 
+      data2: data2.map(v => (v / maxVal) * 100),
+      raw1: data1,
+      raw2: data2,
+      maxVal,
+      isDaily
+    };
+  }, [allOrders, dateRange]);
+
   // ── Derived data ────────────────────────────────────────────────────────
   const referrersList = useMemo(() => {
     return (Array.from(referrersMap.values()) as ReferrerData[])
@@ -175,6 +251,7 @@ export function Referrers() {
     try {
       await setDoc(doc(db, 'system_configs', 'global'), {
         referral: {
+          ...(settings as any),
           commissionMethod: editingSettings.commissionMethod,
           commissionPercent: Number(editingSettings.commissionPercent) || 0,
         },
@@ -182,8 +259,13 @@ export function Referrers() {
       const batch = writeBatch(db);
       allOrders.filter((o: any) => o.referredById).forEach((o: any) => {
         const isEligible = selectedOrdersForCommission.has(o.id!);
-        const pct = Number(editingSettings.commissionPercent) || 0;
-        const amt = (o.totalAmount || 0) * (pct / 100);
+        let pct = Number(editingSettings.commissionPercent) || 0;
+        let amt = 0;
+        if (editingSettings.commissionMethod === 'PER_ORDER' && settings.tiers && settings.tiers.length > 0) {
+          amt = calculateProgressiveCommission(o.totalAmount || 0, settings.tiers);
+        } else {
+          amt = (o.totalAmount || 0) * (pct / 100);
+        }
         batch.update(doc(db, 'orders', o.id!), {
           commissionEligible: isEligible,
           commissionPercent: pct,
@@ -268,7 +350,7 @@ export function Referrers() {
               <FileText className="w-4 h-4" /> Xuất PDF
             </button>
             <button onClick={openSettings} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20">
-              <Filter className="w-4 h-4" /> Bộ lọc
+              <SettingsIcon className="w-4 h-4" /> Cấu hình
             </button>
           </div>
         </div>
@@ -301,35 +383,38 @@ export function Referrers() {
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
               <StatCard label="Tổng người giới thiệu" value={referrersList.length.toLocaleString('vi-VN')} sub="+12.5% so với kỳ trước" icon={Users} color="bg-blue-50 text-blue-600" trend={12.5} />
               <StatCard label="Khách được giới thiệu" value={totalKhachDuocGT.toLocaleString('vi-VN')} sub="+11.3% so với kỳ trước" icon={UserPlus} color="bg-emerald-50 text-emerald-600" trend={11.3} />
-              <StatCard label="Tổng doanh số (Referral)" value={`${formatCurrency(totalReferralRev)} đ`} sub="+15.7% so với kỳ trước" icon={TrendingUp} color="bg-amber-50 text-amber-600" trend={15.7} />
-              <StatCard label="Hoa hồng đồng ý" value={`${formatCurrency(totalCommission)} đ`} sub="+15.2% so với kỳ trước" icon={Award} color="bg-violet-50 text-violet-600" trend={15.2} />
-              <StatCard label="Đã thanh toán" value={`${formatCurrency(totalPaid)} đ`} sub={`${totalCommission > 0 ? Math.round(totalPaid / totalCommission * 100) : 0}% tổng hoa hồng`} icon={CheckCircle2} color="bg-teal-50 text-teal-600" />
-              <StatCard label="Chưa thanh toán" value={`${formatCurrency(totalUnpaid)} đ`} sub={`${totalCommission > 0 ? Math.round(totalUnpaid / totalCommission * 100) : 0}% tổng hoa hồng`} icon={AlertCircle} color="bg-rose-50 text-rose-600" />
+              <StatCard label="Tổng doanh số (Referral)" value={`${formatCurrency(totalReferralRev)}`} sub="+15.7% so với kỳ trước" icon={TrendingUp} color="bg-amber-50 text-amber-600" trend={15.7} />
+              <StatCard label="Hoa hồng đồng ý" value={`${formatCurrency(totalCommission)}`} sub="+15.2% so với kỳ trước" icon={Award} color="bg-violet-50 text-violet-600" trend={15.2} />
+              <StatCard label="Đã thanh toán" value={`${formatCurrency(totalPaid)}`} sub={`${totalCommission > 0 ? Math.round(totalPaid / totalCommission * 100) : 0}% tổng hoa hồng`} icon={CheckCircle2} color="bg-teal-50 text-teal-600" />
+              <StatCard label="Chưa thanh toán" value={`${formatCurrency(totalUnpaid)}`} sub={`${totalCommission > 0 ? Math.round(totalUnpaid / totalCommission * 100) : 0}% tổng hoa hồng`} icon={AlertCircle} color="bg-rose-50 text-rose-600" />
             </div>
 
             {/* Charts area */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
               {/* Bar chart */}
               <div className="xl:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 gap-3">
                   <h3 className="font-black text-slate-800 text-sm uppercase tracking-widest">Doanh thu Referral</h3>
                   <div className="flex items-center gap-4">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Tháng này</span>
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500"><div className="w-2.5 h-2.5 rounded-full bg-slate-200" /> Tháng trước</span>
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /> {chartData.isDaily ? 'Kỳ này' : 'Năm nay'}</span>
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500"><div className="w-2.5 h-2.5 rounded-full bg-slate-200" /> {chartData.isDaily ? 'Kỳ trước' : 'Năm trước'}</span>
                   </div>
                 </div>
-                <div className="h-[220px] flex items-end gap-2 px-2 pb-6 relative border-b border-l border-slate-100">
-                  {Array.from({ length: 12 }).map((_, i) => {
-                    const h1 = 20 + (i % 4) * 15 + (i % 3) * 10;
-                    const h2 = 15 + (i % 5) * 12 + (i % 2) * 8;
+                <div className="h-[220px] flex items-end gap-2 px-2 pb-6 relative border-b border-l border-slate-100 overflow-x-auto custom-scrollbar">
+                  {chartData.labels.map((label, i) => {
+                    const h1 = chartData.data2[i];
+                    const h2 = chartData.data1[i];
                     return (
-                      <div key={i} className="flex-1 flex justify-center items-end gap-0.5 h-full group">
-                        <div className="w-2/5 bg-slate-100 rounded-t-sm group-hover:bg-slate-200 transition-colors" style={{ height: `${h1}%` }} />
-                        <div className="w-2/5 bg-blue-500 rounded-t-sm group-hover:bg-blue-600 transition-colors" style={{ height: `${h2}%` }} />
-                        <span className="absolute text-[9px] font-bold text-slate-400" style={{ bottom: 4, left: `${(i / 12) * 100 + 4}%` }}>T{i + 1}</span>
+                      <div key={i} className="flex-1 flex justify-center items-end gap-0.5 h-full group min-w-[24px]" title={`${label}\n${chartData.isDaily ? 'Kỳ này' : 'Năm nay'}: ${formatCurrency(chartData.raw1[i])}\n${chartData.isDaily ? 'Kỳ trước' : 'Năm trước'}: ${formatCurrency(chartData.raw2[i])}`}>
+                        <div className="w-2/5 bg-slate-100 rounded-t-sm group-hover:bg-slate-200 transition-all duration-500" style={{ height: `${h1}%`, minHeight: h1 > 0 ? '4px' : '0' }} />
+                        <div className="w-2/5 bg-blue-500 rounded-t-sm group-hover:bg-blue-600 transition-all duration-500" style={{ height: `${h2}%`, minHeight: h2 > 0 ? '4px' : '0' }} />
+                        <span className="absolute text-[9px] font-bold text-slate-400 whitespace-nowrap" style={{ bottom: 4, left: `${(i / chartData.labels.length) * 100 + (100 / chartData.labels.length / 2)}%`, transform: 'translateX(-50%)' }}>{label}</span>
                       </div>
                     );
                   })}
+                  {chartData.labels.length === 0 && (
+                    <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-xs font-bold">Chưa có dữ liệu biểu đồ</div>
+                  )}
                 </div>
               </div>
 
@@ -351,7 +436,7 @@ export function Referrers() {
                           <p className="text-sm font-bold text-slate-800 truncate">{r.customer.name}</p>
                           <p className="text-[10px] text-slate-500 font-bold">{r.referredCustomers.length} khách</p>
                         </div>
-                        <p className="text-sm font-black text-emerald-600 shrink-0">{formatCurrency(r.totalReferralRevenue)}đ</p>
+                        <p className="text-sm font-black text-emerald-600 shrink-0">{formatCurrency(r.totalReferralRevenue)}</p>
                       </div>
                     ))}
                     {referrersList.length === 0 && <p className="text-xs text-slate-400 text-center py-4 font-bold">Chưa có dữ liệu</p>}
@@ -373,8 +458,8 @@ export function Referrers() {
                     </div>
                   </div>
                   <div className="flex items-center gap-5">
-                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" /><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đã TT</p><p className="text-sm font-black text-slate-800">{formatCurrency(totalPaid)}đ</p></div></div>
-                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0" /><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Còn lại</p><p className="text-sm font-black text-slate-800">{formatCurrency(totalUnpaid)}đ</p></div></div>
+                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" /><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đã TT</p><p className="text-sm font-black text-slate-800">{formatCurrency(totalPaid)}</p></div></div>
+                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0" /><div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Còn lại</p><p className="text-sm font-black text-slate-800">{formatCurrency(totalUnpaid)}</p></div></div>
                   </div>
                 </div>
               </div>
@@ -427,7 +512,7 @@ export function Referrers() {
                     <FileText className="w-4 h-4 text-rose-500" /> Xuất PDF
                   </button>
                   <button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-600/20">
-                    <Filter className="w-4 h-4" /> Bộ lọc
+                    <SettingsIcon className="w-4 h-4" /> Cấu hình
                   </button>
                 </div>
               </div>
@@ -474,10 +559,10 @@ export function Referrers() {
                           <td className="p-4 text-sm text-slate-600 font-medium">{item.customer.phone}</td>
                           <td className="p-4 text-center"><TierBadge tier={item.customer.tier} /></td>
                           <td className="p-4 text-center font-black text-slate-700">{item.referredCustomers.length}</td>
-                          <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.totalReferralRevenue)} đ</td>
-                          <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.totalCommission)} đ</td>
-                          <td className="p-4 text-right font-black text-emerald-600">{formatCurrency(item.paidCommission)} đ</td>
-                          <td className="p-4 text-right font-black text-rose-500">{formatCurrency(item.unpaidCommission)} đ</td>
+                          <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.totalReferralRevenue)}</td>
+                          <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.totalCommission)}</td>
+                          <td className="p-4 text-right font-black text-emerald-600">{formatCurrency(item.paidCommission)}</td>
+                          <td className="p-4 text-right font-black text-rose-500">{formatCurrency(item.unpaidCommission)}</td>
                           <td className="p-4 text-center">
                             {item.unpaidCommission > 0
                               ? <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-black uppercase tracking-wide">Đang hoạt động</span>
@@ -565,10 +650,10 @@ export function Referrers() {
                   <div className="grid grid-cols-2 gap-px bg-slate-100 shrink-0">
                     {[
                       { label: 'Khách giới thiệu', value: selectedReferrer.referredCustomers.length, className: 'text-slate-900' },
-                      { label: 'Doanh số (Referral)', value: `${formatCurrency(selectedReferrer.totalReferralRevenue)} đ`, className: 'text-slate-900' },
-                      { label: 'Đã thanh toán', value: `${formatCurrency(selectedReferrer.paidCommission)} đ`, className: 'text-emerald-600' },
-                      { label: 'Tổng hoa hồng', value: `${formatCurrency(selectedReferrer.totalCommission)} đ`, className: 'text-blue-600' },
-                      { label: 'Còn lại', value: `${formatCurrency(selectedReferrer.unpaidCommission)} đ`, className: 'text-rose-600', colSpan: true },
+                      { label: 'Doanh số (Referral)', value: `${formatCurrency(selectedReferrer.totalReferralRevenue)}`, className: 'text-slate-900' },
+                      { label: 'Đã thanh toán', value: `${formatCurrency(selectedReferrer.paidCommission)}`, className: 'text-emerald-600' },
+                      { label: 'Tổng hoa hồng', value: `${formatCurrency(selectedReferrer.totalCommission)}`, className: 'text-blue-600' },
+                      { label: 'Còn lại', value: `${formatCurrency(selectedReferrer.unpaidCommission)}`, className: 'text-rose-600', colSpan: true },
                     ].map((stat, i) => (
                       <div key={i} className={cn('bg-white p-3', (stat as any).colSpan ? 'col-span-2' : '')}>
                         <p className="text-[10px] font-bold text-slate-500 mb-1">{stat.label}</p>
@@ -599,8 +684,8 @@ export function Referrers() {
                                 <p className="text-[10px] text-slate-500 font-bold">{c.phone}</p>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className="text-sm font-black text-emerald-600">{formatCurrency(cRev)} đ</p>
-                                <p className="text-[10px] text-amber-600 font-bold">HH: {formatCurrency(commAmt)} đ</p>
+                                <p className="text-sm font-black text-emerald-600">{formatCurrency(cRev)}</p>
+                                <p className="text-[10px] text-amber-600 font-bold">HH: {formatCurrency(commAmt)}</p>
                               </div>
                             </div>
                           );
@@ -622,7 +707,7 @@ export function Referrers() {
                               <p className="text-[10px] text-slate-500 font-bold mt-0.5">{o.customerName} • {o.createdAt ? formatDate(o.createdAt.toDate ? o.createdAt.toDate() : new Date(o.createdAt)) : ''}</p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="text-sm font-black text-amber-600">{formatCurrency(o.commissionAmount || 0)} đ</p>
+                              <p className="text-sm font-black text-amber-600">{formatCurrency(o.commissionAmount || 0)}</p>
                               <span className={cn('text-[10px] font-bold', o.commissionStatus === 'paid' ? 'text-emerald-600' : 'text-rose-500')}>
                                 {o.commissionStatus === 'paid' ? '✓ Đã TT' : '○ Chưa TT'}
                               </span>
@@ -644,7 +729,7 @@ export function Referrers() {
                       className="w-full py-2.5 bg-blue-600 text-white font-black text-sm rounded-lg shadow-sm shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
                     >
                       {paying && <Loader2 className="w-4 h-4 animate-spin" />}
-                      Thanh toán hoa hồng ({formatCurrency(selectedReferrer.unpaidCommission)} đ)
+                      Thanh toán hoa hồng ({formatCurrency(selectedReferrer.unpaidCommission)})
                     </button>
                     <button onClick={openSettings} className="w-full py-2.5 bg-slate-100 text-slate-700 font-black text-sm rounded-lg hover:bg-slate-200 transition-colors">
                       Cấu hình hoa hồng
@@ -675,9 +760,9 @@ export function Referrers() {
                       </div>
                       <div className="grid grid-cols-2 gap-3 mb-5">
                         <div className="bg-slate-50 rounded-xl p-3"><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Khách GT</p><p className="font-black text-slate-900">{selectedReferrer.referredCustomers.length}</p></div>
-                        <div className="bg-slate-50 rounded-xl p-3"><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Doanh số</p><p className="font-black text-slate-900 text-sm">{formatCurrency(selectedReferrer.totalReferralRevenue)}đ</p></div>
-                        <div className="bg-emerald-50 rounded-xl p-3"><p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Đã TT</p><p className="font-black text-emerald-700 text-sm">{formatCurrency(selectedReferrer.paidCommission)}đ</p></div>
-                        <div className="bg-rose-50 rounded-xl p-3"><p className="text-[10px] font-bold text-rose-500 uppercase mb-1">Còn lại</p><p className="font-black text-rose-700 text-sm">{formatCurrency(selectedReferrer.unpaidCommission)}đ</p></div>
+                        <div className="bg-slate-50 rounded-xl p-3"><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Doanh số</p><p className="font-black text-slate-900 text-sm">{formatCurrency(selectedReferrer.totalReferralRevenue)}</p></div>
+                        <div className="bg-emerald-50 rounded-xl p-3"><p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Đã TT</p><p className="font-black text-emerald-700 text-sm">{formatCurrency(selectedReferrer.paidCommission)}</p></div>
+                        <div className="bg-rose-50 rounded-xl p-3"><p className="text-[10px] font-bold text-rose-500 uppercase mb-1">Còn lại</p><p className="font-black text-rose-700 text-sm">{formatCurrency(selectedReferrer.unpaidCommission)}</p></div>
                       </div>
                       <div className="space-y-2">
                         {selectedReferrer.referredCustomers.map(c => {
@@ -687,7 +772,7 @@ export function Referrers() {
                             <div key={c.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
                               <Avatar name={c.name} size="sm" />
                               <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-900 truncate">{c.name}</p><p className="text-[10px] text-slate-500">{c.phone}</p></div>
-                              <p className="text-sm font-black text-emerald-600 shrink-0">{formatCurrency(cRev)}đ</p>
+                              <p className="text-sm font-black text-emerald-600 shrink-0">{formatCurrency(cRev)}</p>
                             </div>
                           );
                         })}
@@ -749,7 +834,7 @@ export function Referrers() {
                         </div>
                       </td>
                       <td className="p-4 text-center"><TierBadge tier={item.customer.tier} /></td>
-                      <td className="p-4 text-right font-black text-emerald-600">{formatCurrency(item.revenue)} đ</td>
+                      <td className="p-4 text-right font-black text-emerald-600">{formatCurrency(item.revenue)}</td>
                       <td className="p-4 text-center font-black text-slate-700">{item.orders}</td>
                     </tr>
                   ))}
@@ -798,9 +883,9 @@ export function Referrers() {
                           <span className="font-bold text-slate-700 text-sm">{o.referredByName || '—'}</span>
                         </div>
                       </td>
-                      <td className="p-4 text-right font-black text-slate-900">{formatCurrency(o.totalAmount)} đ</td>
+                      <td className="p-4 text-right font-black text-slate-900">{formatCurrency(o.totalAmount)}</td>
                       <td className="p-4 text-right font-bold text-slate-600">{o.commissionPercent || settings.commissionPercent || 0}%</td>
-                      <td className="p-4 text-right font-black text-amber-600">{formatCurrency(o.commissionAmount || 0)} đ</td>
+                      <td className="p-4 text-right font-black text-amber-600">{formatCurrency(o.commissionAmount || 0)}</td>
                       <td className="p-4 text-center">
                         {o.commissionStatus === 'paid'
                           ? <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black">Đã TT</span>
@@ -825,18 +910,18 @@ export function Referrers() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Tổng cần thanh toán</p>
-                <p className="text-2xl font-black text-rose-600">{formatCurrency(totalUnpaid)} đ</p>
+                <p className="text-2xl font-black text-rose-600">{formatCurrency(totalUnpaid)}</p>
                 <p className="text-[11px] text-slate-500 font-bold mt-1">{referrersList.filter(r => r.unpaidCommission > 0).length} người giới thiệu</p>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Đã thanh toán</p>
-                <p className="text-2xl font-black text-emerald-600">{formatCurrency(totalPaid)} đ</p>
+                <p className="text-2xl font-black text-emerald-600">{formatCurrency(totalPaid)}</p>
                 <p className="text-[11px] text-slate-500 font-bold mt-1">{paymentHistory.length} giao dịch</p>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Tỷ lệ thanh toán</p>
                 <p className="text-2xl font-black text-blue-600">{totalCommission > 0 ? Math.round(totalPaid / totalCommission * 100) : 0}%</p>
-                <p className="text-[11px] text-slate-500 font-bold mt-1">trong tổng {formatCurrency(totalCommission)} đ hoa hồng</p>
+                <p className="text-[11px] text-slate-500 font-bold mt-1">trong tổng {formatCurrency(totalCommission)} hoa hồng</p>
               </div>
             </div>
 
@@ -870,9 +955,9 @@ export function Referrers() {
                           </div>
                         </td>
                         <td className="p-4 text-center font-black text-slate-700">{item.totalReferralOrders}</td>
-                        <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.totalCommission)} đ</td>
-                        <td className="p-4 text-right font-black text-emerald-600">{formatCurrency(item.paidCommission)} đ</td>
-                        <td className="p-4 text-right font-black text-rose-600">{formatCurrency(item.unpaidCommission)} đ</td>
+                        <td className="p-4 text-right font-black text-slate-900">{formatCurrency(item.totalCommission)}</td>
+                        <td className="p-4 text-right font-black text-emerald-600">{formatCurrency(item.paidCommission)}</td>
+                        <td className="p-4 text-right font-black text-rose-600">{formatCurrency(item.unpaidCommission)}</td>
                         <td className="p-4 text-center">
                           <button onClick={() => payCommission(item.customer.id!)} disabled={paying} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 transition-colors disabled:opacity-50">
                             Thanh toán
@@ -975,13 +1060,21 @@ export function Referrers() {
                     </label>
                   </div>
                 </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">% Hoa hồng</label>
-                  <div className="relative w-48">
-                    <input type="number" value={editingSettings.commissionPercent} onChange={e => setEditingSettings({ ...editingSettings, commissionPercent: e.target.value })} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none" placeholder="5" />
-                    <span className="absolute right-5 top-1/2 -translate-y-1/2 font-black text-slate-400">%</span>
+                {(settings.tiers && settings.tiers.length > 0) ? (
+                  <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
+                    <p className="text-sm text-emerald-700 font-bold">
+                      Hệ thống đang sử dụng cấu hình <span className="font-black text-emerald-800">Hoa hồng theo bậc doanh số</span> đã thiết lập trong Cài đặt chung.
+                    </p>
                   </div>
-                </div>
+                ) : (
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">% Hoa hồng</label>
+                    <div className="relative w-48">
+                      <input type="number" value={editingSettings.commissionPercent} onChange={e => setEditingSettings({ ...editingSettings, commissionPercent: e.target.value })} className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none" placeholder="5" />
+                      <span className="absolute right-5 top-1/2 -translate-y-1/2 font-black text-slate-400">%</span>
+                    </div>
+                  </div>
+                )}
                 <div className="border-t border-slate-100 pt-5">
                   <div className="flex items-center justify-between gap-3 mb-4">
                     <div>

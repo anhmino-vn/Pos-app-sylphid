@@ -1,207 +1,144 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, Timestamp } from '../../lib/firebaseAdapter';
-import { db } from '../../lib/supabase';
-import { startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, subDays, format } from 'date-fns';
-import { Loader2, Sparkles, Users, Eye, X } from 'lucide-react';
-import { formatCurrency } from '../../lib/utils';
-import { Order } from '../../lib/supabase';
+import React, { useContext, useMemo } from "react";
+import { ReportDataContext } from "../Reports";
+import { Sparkles, Activity, Clock, TrendingUp } from "lucide-react";
+import { cn, formatCurrency } from "../../lib/utils";
 
-interface ServiceStats {
-  id: string;
-  name: string;
-  quantitySold: number;
-  revenue: number;
-  buyers: { customerId: string, customerName: string, quantity: number, orderId: string, date: Date }[];
-  uniqueCustomers: number;
-}
+export function ServicesReport() {
+  const { orders, services, appointments } = useContext(ReportDataContext);
 
-export function ServicesReport({ dateRange }: { dateRange: string }) {
-  const [loading, setLoading] = useState(true);
-  const [servicesStats, setServicesStats] = useState<ServiceStats[]>([]);
-  const [selectedService, setSelectedService] = useState<ServiceStats | null>(null);
+  const { sStats, sList } = useMemo(() => {
+    let totalUses = 0;
+    let totalRevenue = 0;
+    let totalProfit = 0;
 
-  useEffect(() => {
-    let startDate: Date;
-    let endDate = endOfDay(new Date());
-    const now = new Date();
+    // Aggregate from orders (Revenue & Profit)
+    const salesMap = new Map<string, { qty: number, rev: number, profit: number }>();
+    orders.forEach((o: any) => {
+      if (o.status === 'paid' && Array.isArray(o.items)) {
+        o.items.forEach((item: any) => {
+          if (item.type === 'service') {
+            const qty = item.quantity || 1;
+            const rev = item.price * qty;
+            const cost = item.originalPrice || item.price * 0.2; // Services usually have high margin (80%)
+            const profit = rev - (cost * qty);
 
-    switch (dateRange) {
-      case 'today':
-        startDate = startOfDay(now);
-        break;
-      case 'yesterday':
-        startDate = startOfDay(subDays(now, 1));
-        endDate = endOfDay(subDays(now, 1));
-        break;
-      case 'week':
-        startDate = startOfDay(subDays(now, 7));
-        break;
-      case 'month':
-        startDate = startOfMonth(now);
-        break;
-      case 'year':
-        startDate = startOfYear(now);
-        break;
-      default:
-        startDate = startOfMonth(now);
-    }
+            totalUses += qty;
+            totalRevenue += rev;
+            totalProfit += profit;
 
-    const startTimestamp = Timestamp.fromDate(startDate);
-    const endTimestamp = Timestamp.fromDate(endDate);
-
-    const qOrders = query(
-      collection(db, 'orders'),
-      where('createdAt', '>=', startTimestamp),
-      where('createdAt', '<=', endTimestamp)
-    );
-
-    setLoading(true);
-    getDocs(qOrders)
-      .then(snap => {
-        const statsMap = new Map<string, ServiceStats>();
-
-        snap.docs.forEach(doc => {
-          const order = { id: doc.id, ...doc.data() } as Order;
-          if (order.status !== 'paid') return;
-          const orderDate = order.createdAt?.toDate?.() || new Date(order.createdAt as any);
-
-          if (order.items && Array.isArray(order.items)) {
-            order.items.forEach(item => {
-              if (item.type === 'service') {
-                const pId = item.id;
-                if (!statsMap.has(pId)) {
-                  statsMap.set(pId, {
-                    id: pId,
-                    name: item.name,
-                    quantitySold: 0,
-                    revenue: 0,
-                    buyers: [],
-                    uniqueCustomers: 0
-                  });
-                }
-                const pStat = statsMap.get(pId)!;
-                pStat.quantitySold += item.quantity || 1;
-                pStat.revenue += item.price * (item.quantity || 1);
-                pStat.buyers.push({
-                   customerId: order.customerId || 'retail',
-                   customerName: order.customerName || 'Khách lẻ',
-                   quantity: item.quantity || 1,
-                   orderId: order.id || '',
-                   date: orderDate
-                });
-              }
+            const existing = salesMap.get(item.id) || { qty: 0, rev: 0, profit: 0 };
+            salesMap.set(item.id, {
+               qty: existing.qty + qty,
+               rev: existing.rev + rev,
+               profit: existing.profit + profit
             });
           }
         });
+      }
+    });
 
-        // Compute unique customers
-        const finalStats = Array.from(statsMap.values()).map(p => {
-           const uniqueIds = new Set(p.buyers.map(b => b.customerId));
-           p.buyers.sort((a,b) => b.date.getTime() - a.date.getTime());
-           return {
-              ...p,
-              uniqueCustomers: uniqueIds.size
-           };
-        });
+    // Aggregate from appointments (Actual executions)
+    const execMap = new Map<string, number>();
+    appointments.forEach((a: any) => {
+      if (['completed'].includes(a.status) && a.serviceId) {
+        execMap.set(a.serviceId, (execMap.get(a.serviceId) || 0) + 1);
+      }
+    });
 
-        finalStats.sort((a, b) => b.quantitySold - a.quantitySold);
-        setServicesStats(finalStats);
-        setLoading(false);
-      }).catch(e => {
-        console.error(e);
-        setLoading(false);
-      });
-  }, [dateRange]);
+    // Join with services catalog
+    const list = services.map((s: any) => {
+      const sales = salesMap.get(s.id) || { qty: 0, rev: 0, profit: 0 };
+      const execs = execMap.get(s.id) || 0;
+      return {
+         ...s,
+         soldQty: sales.qty,
+         execQty: execs,
+         revenue: sales.rev,
+         profit: sales.profit
+      };
+    }).sort((a, b) => b.revenue - a.revenue); // Sort by Revenue DESC
+
+    return {
+      sStats: { totalUses, totalRevenue, totalProfit, totalExecs: appointments.filter((a: any) => a.status === 'completed').length },
+      sList: list
+    };
+  }, [orders, services, appointments]);
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm">
-         <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs mb-4">Báo cáo dịch vụ đã bán</h3>
-         {loading ? (
-             <div className="py-12 flex justify-center text-slate-300">
-                 <Loader2 className="w-8 h-8 animate-spin" />
-             </div>
-         ) : servicesStats.length === 0 ? (
-             <div className="py-12 text-center text-[10px] font-bold text-slate-400 tracking-widest uppercase">
-                 Không có dịch vụ nào được bán trong kỳ
-             </div>
-         ) : (
-             <div className="overflow-x-auto">
-                 <table className="w-full text-left">
-                     <thead>
-                         <tr className="border-b border-slate-100 uppercase tracking-widest text-[10px] text-slate-400">
-                             <th className="py-3 px-4 font-black">Tên dịch vụ</th>
-                             <th className="py-3 px-4 font-black text-right">Tổng số lượng</th>
-                             <th className="py-3 px-4 font-black text-right">Tổng khách Hàng (Unique)</th>
-                             <th className="py-3 px-4 font-black text-right">Tổng doanh thu</th>
-                             <th className="py-3 px-4 font-black text-right">Chi tiết</th>
-                         </tr>
-                     </thead>
-                     <tbody className="text-sm font-medium text-slate-700">
-                         {servicesStats.map(stat => (
-                             <tr key={stat.id} className="border-b last:border-0 border-slate-50 hover:bg-slate-50/50">
-                                 <td className="py-4 px-4 font-bold max-w-[200px] truncate" title={stat.name}>{stat.name}</td>
-                                 <td className="py-4 px-4 text-right">
-                                     <span className="bg-purple-50 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-black">{stat.quantitySold}</span>
-                                 </td>
-                                 <td className="py-4 px-4 text-right">
-                                     <span className="bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg text-xs font-black"><Users className="w-3 h-3 inline mr-1" />{stat.uniqueCustomers}</span>
-                                 </td>
-                                 <td className="py-4 px-4 text-right font-black">{formatCurrency(stat.revenue)}</td>
-                                 <td className="py-4 px-4 text-right">
-                                     <button 
-                                       onClick={() => setSelectedService(stat)}
-                                       className="w-8 h-8 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl flex items-center justify-center transition-colors ml-auto"
-                                     >
-                                         <Eye className="w-4 h-4" />
-                                     </button>
-                                 </td>
-                             </tr>
-                         ))}
-                     </tbody>
-                 </table>
-             </div>
-         )}
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+         <StatCard title="Dịch vụ Đã Bán" value={sStats.totalUses.toLocaleString()} icon={Sparkles} color="blue" />
+         <StatCard title="Doanh thu DV" value={formatCurrency(sStats.totalRevenue)} icon={TrendingUp} color="emerald" />
+         <StatCard title="Lợi nhuận DV" value={formatCurrency(sStats.totalProfit)} icon={Activity} color="purple" />
+         <StatCard title="Số lượt thực hiện (Appt)" value={sStats.totalExecs.toLocaleString()} icon={Clock} color="amber" />
       </div>
 
-      {selectedService && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[32px] w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl relative overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <div>
-                <h3 className="font-black text-slate-800 tracking-tight text-lg">{selectedService.name}</h3>
-                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1">Lịch sử khách sử dụng</p>
-              </div>
-              <button onClick={() => setSelectedService(null)} className="w-10 h-10 bg-white rounded-xl flex items-center justify-center hover:bg-rose-50 hover:text-rose-600 transition-colors shadow-sm">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto flex-1">
-              <table className="w-full text-left">
-                  <thead>
-                      <tr className="border-b border-slate-100 uppercase tracking-widest text-[10px] text-slate-400">
-                          <th className="py-3 px-4 font-black">Thời gian</th>
-                          <th className="py-3 px-4 font-black">Mã ĐH</th>
-                          <th className="py-3 px-4 font-black">Tên Khách</th>
-                          <th className="py-3 px-4 font-black text-right">SL Mua</th>
-                      </tr>
-                  </thead>
-                  <tbody className="text-sm font-medium text-slate-700">
-                      {selectedService.buyers.map((buyer, idx) => (
-                          <tr key={idx} className="border-b last:border-0 border-slate-50">
-                              <td className="py-3 px-4">{format(buyer.date, 'HH:mm - dd/MM')}</td>
-                              <td className="py-3 px-4 font-bold">{buyer.orderId.slice(-6).toUpperCase()}</td>
-                              <td className="py-3 px-4">{buyer.customerName}</td>
-                              <td className="py-3 px-4 text-right font-black">{buyer.quantity}</td>
-                          </tr>
-                      ))}
-                  </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Main Content */}
+      <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-6 overflow-hidden">
+         <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs mb-6">Hiệu suất Dịch vụ</h3>
+         <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse">
+               <thead>
+                  <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                     <th className="pb-3 font-medium">Dịch vụ</th>
+                     <th className="pb-3 font-medium text-center">Lượt Bán</th>
+                     <th className="pb-3 font-medium text-center">Lượt Thực Hiện</th>
+                     <th className="pb-3 font-medium text-right">Doanh Thu</th>
+                     <th className="pb-3 font-medium text-right">Lợi Nhuận</th>
+                  </tr>
+               </thead>
+               <tbody className="text-sm">
+                  {sList.slice(0, 50).map((s, index) => (
+                     <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3">
+                           <div className="flex items-center gap-3">
+                              <span className={cn("w-6 h-6 rounded flex items-center justify-center text-[10px] font-black", index < 3 ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500')}>
+                                 #{index + 1}
+                              </span>
+                              <div>
+                                 <p className="font-bold text-slate-900">{s.name}</p>
+                                 <p className="text-[10px] text-slate-500 uppercase">{s.category || 'Chưa phân loại'}</p>
+                              </div>
+                           </div>
+                        </td>
+                        <td className="py-3 font-black text-slate-700 text-center">{s.soldQty}</td>
+                        <td className="py-3 font-bold text-indigo-600 text-center">{s.execQty}</td>
+                        <td className="py-3 font-black text-emerald-600 text-right">{formatCurrency(s.revenue)}</td>
+                        <td className="py-3 font-black text-purple-600 text-right">{formatCurrency(s.profit)}</td>
+                     </tr>
+                  ))}
+                  {sList.length === 0 && (
+                     <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-400 text-sm font-medium">Không có dữ liệu</td>
+                     </tr>
+                  )}
+               </tbody>
+            </table>
+         </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ title, value, icon: Icon, color }: any) {
+  const colors: Record<string, string> = {
+    blue: "bg-blue-50 text-blue-600 border-blue-100",
+    emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
+    amber: "bg-amber-50 text-amber-600 border-amber-100",
+    purple: "bg-purple-50 text-purple-600 border-purple-100",
+    rose: "bg-rose-50 text-rose-600 border-rose-100",
+  };
+
+  return (
+    <div className="bg-white p-4 lg:p-6 rounded-[24px] border border-slate-100 shadow-sm">
+      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-4", colors[color])}>
+        <Icon className="w-5 h-5" />
+      </div>
+      <div>
+        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{title}</h4>
+        <p className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight truncate">{value}</p>
+      </div>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { Products } from './pages/Products';
 import { Orders } from './pages/Orders';
 import { CreateOrder } from './pages/CreateOrder';
 import { Payment } from './pages/Payment';
+import { CustomerDebts } from './pages/CustomerDebts';
 import { Customers } from './pages/Customers';
 import { Inventory } from './pages/Inventory';
 import { Users } from './pages/Users';
@@ -49,14 +50,19 @@ import { ServiceCombos } from './pages/services/ServiceCombos';
 import { Incomes } from './pages/finances/Incomes';
 import { Expenses } from './pages/finances/Expenses';
 import { Debts } from './pages/finances/Debts';
+import { Funds } from './pages/finances/Funds';
+import { FinanceTrash } from './pages/finances/FinanceTrash';
 import { Timesheets } from './pages/users/Timesheets';
 import { Payroll } from './pages/users/Payroll';
 import { StaffCommissions } from './pages/users/StaffCommissions';
-import { StoreSettings } from './pages/settings/StoreSettings';
-import { Branches } from './pages/settings/Branches';
-import { Devices } from './pages/settings/Devices';
-import { PaymentSettings } from './pages/settings/PaymentSettings';
-import { InvoiceSettings } from './pages/settings/InvoiceSettings';
+import { Schedules } from './pages/users/Schedules';
+import { Kpi } from './pages/users/Kpi';
+import { Evaluations } from './pages/users/Evaluations';
+import { Roles } from './pages/users/Roles';
+import { StaffLayout } from './pages/staff/StaffLayout';
+import { StaffDashboard } from './pages/staff/StaffDashboard';
+import { ShiftRegistration } from './pages/staff/ShiftRegistration';
+import { MyPayroll } from './pages/staff/MyPayroll';
 
 import { SettingsProvider } from './lib/settings';
 
@@ -148,8 +154,9 @@ export default function App() {
           await fetchProfile(session.user);
           
           // Setup real-time profile listener
+          const channelId = `profile_${session.user.id}_${Date.now()}`;
           profileSubscription = supabase
-            .channel('public:user_profiles')
+            .channel(channelId)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'user_profiles', filter: `id=eq.${session.user.id}` }, (payload) => {
                if (payload.new) {
                  setProfile(prev => ({ ...prev, ...(payload.new as any) }));
@@ -172,8 +179,9 @@ export default function App() {
         await fetchProfile(session.user);
         
         if (!profileSubscription) {
+            const channelId = `profile_${session.user.id}_${Date.now()}`;
             profileSubscription = supabase
-            .channel('public:user_profiles')
+            .channel(channelId)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'user_profiles', filter: `id=eq.${session.user.id}` }, (payload) => {
                if (payload.new) {
                  setProfile(prev => ({ ...prev, ...(payload.new as any) }));
@@ -202,19 +210,52 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F8FAFC]">
-        <motion.div 
+      <div className="flex flex-col items-center justify-center min-h-screen" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #0d2045 50%, #0a1628 100%)' }}>
+        <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 1, repeat: Infinity, repeatType: 'reverse', ease: "easeInOut" }}
-          className="w-20 h-20 bg-blue-600 rounded-[32px] flex items-center justify-center text-white text-4xl font-black shadow-2xl mb-8 relative"
+          animate={{ scale: [0.9, 1.05, 0.9] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+          className="mb-8 relative"
+          style={{ filter: 'drop-shadow(0 0 32px rgba(251,146,60,0.4)) drop-shadow(0 0 64px rgba(59,130,246,0.2))' }}
         >
-          <div className="absolute inset-0 bg-blue-500 rounded-[32px] animate-ping opacity-20"></div>
-          L
+          <img
+            src="/logo.png"
+            alt="AM Agency Logo"
+            style={{ width: 140, height: 140, objectFit: 'contain', borderRadius: '50%' }}
+          />
+          <div className="absolute inset-0 rounded-full animate-ping" style={{ background: 'radial-gradient(circle, rgba(251,146,60,0.15) 0%, transparent 70%)', animationDuration: '2s' }}></div>
         </motion.div>
-        <div className="flex flex-col items-center gap-2">
-          <p className="text-slate-900 font-black tracking-[0.2em] text-sm uppercase">LuxeFlow</p>
-          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Đang khởi tạo hệ thống...</p>
+        <div className="flex flex-col items-center gap-3">
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.6 }}
+            className="font-black tracking-[0.25em] text-base uppercase"
+            style={{ color: '#ffffff', letterSpacing: '0.25em' }}
+          >
+            <span style={{ color: '#ffffff' }}>AM</span>{' '}
+            <span style={{ color: '#fb923c' }}>Agency</span>
+          </motion.p>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+            className="flex items-center gap-2"
+          >
+            <div className="flex gap-1">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
+                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                  style={{ width: 5, height: 5, borderRadius: '50%', background: '#fb923c' }}
+                />
+              ))}
+            </div>
+            <p className="font-semibold text-[10px] uppercase tracking-widest" style={{ color: '#64748b' }}>
+              Đang khởi tạo hệ thống
+            </p>
+          </motion.div>
         </div>
       </div>
     );
@@ -225,9 +266,18 @@ export default function App() {
       <AuthContext.Provider value={{ user, profile, loading }}>
         <Router basename={import.meta.env.BASE_URL}>
           <Routes>
-            <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+            <Route path="/login" element={(!user || sessionStorage.getItem('isRecovering') === 'true') ? <Login /> : <Navigate to="/" />} />
+            
+            {/* STAFF MOBILE PORTAL */}
+            <Route element={user ? <StaffLayout /> : <Navigate to="/login" />}>
+              <Route path="/staff" element={<StaffDashboard />} />
+              <Route path="/staff/shifts" element={<ShiftRegistration />} />
+              <Route path="/staff/payroll" element={<MyPayroll />} />
+            </Route>
+
+            {/* ADMIN / MANAGER DASHBOARD */}
             <Route element={user ? <Layout /> : <Navigate to="/login" />}>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={profile?.role === 'staff' ? <Navigate to="/staff" /> : <Dashboard />} />
               <Route path="/products" element={<Products />} />
               <Route path="/products/categories" element={<CategoriesMaster />} />
               <Route path="/products/settings" element={<ProductSettings />} />
@@ -248,12 +298,15 @@ export default function App() {
               <Route path="/appointments/staff-config" element={<StaffManagement />} />
               <Route path="/appointments/rooms" element={<RoomManagement />} />
               <Route path="/finances" element={<Finances />} />
+              <Route path="/finances/funds" element={<Funds />} />
               <Route path="/finances/incomes" element={<Incomes />} />
               <Route path="/finances/expenses" element={<Expenses />} />
               <Route path="/finances/debts" element={<Debts />} />
+              <Route path="/finances/trash" element={<FinanceTrash />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/orders/create" element={<CreateOrder />} />
               <Route path="/orders/payments" element={<Payment />} />
+              <Route path="/orders/debts" element={<CustomerDebts />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/customers/referrers" element={<Referrers />} />
               <Route path="/customers/referred" element={<ReferredList />} />
@@ -282,21 +335,21 @@ export default function App() {
                 <>
                   <Route path="/users" element={<Users />} />
                   <Route path="/users/timesheets" element={<Timesheets />} />
-                  <Route path="/users/payroll" element={<Payroll />} />
+                  <Route path="/users/schedules" element={<Schedules />} />
+                  <Route path="/users/kpi" element={<Kpi />} />
                   <Route path="/users/commissions" element={<StaffCommissions />} />
+                  <Route path="/users/payroll" element={<Payroll />} />
+                  <Route path="/users/roles" element={<Roles />} />
+                  <Route path="/users/evaluations" element={<Evaluations />} />
                   <Route path="/activity-logs" element={<ActivityLogs />} />
                 </>
               )}
               {(profile?.role === 'admin' || profile?.permissions?.settings?.view) && (
                  <>
                    <Route path="/settings" element={<Settings />} />
-                   <Route path="/settings/store" element={<StoreSettings />} />
-                   <Route path="/settings/branches" element={<Branches />} />
-                   <Route path="/settings/devices" element={<Devices />} />
-                   <Route path="/settings/payment" element={<PaymentSettings />} />
-                   <Route path="/settings/invoice" element={<InvoiceSettings />} />
+                   <Route path="/settings/:tab" element={<Settings />} />
                  </>
-              )}
+               )}
             </Route>
           </Routes>
         </Router>

@@ -249,15 +249,15 @@ export interface Role {
 }
 
 export interface UserPermissions {
-  products: { view: boolean; add: boolean; edit: boolean; delete: boolean };
-  orders: { view: boolean; add: boolean; edit: boolean; delete: boolean };
-  stock: { view: boolean; import: boolean; export: boolean };
-  customers: { view: boolean; edit: boolean };
-  reports: { view: boolean };
-  services?: { view: boolean; add: boolean; edit: boolean; delete: boolean };
-  documents?: { view: boolean; add: boolean; edit: boolean; delete: boolean; print: boolean };
-  staff?: { view: boolean; add: boolean; edit: boolean };
-  settings?: { view: boolean; edit: boolean };
+  products: { view: boolean; add: boolean; edit: boolean; delete: boolean; };
+  orders: { view: boolean; add: boolean; edit: boolean; delete: boolean; exportExcel?: boolean; exportPdf?: boolean; };
+  stock: { view: boolean; import: boolean; export: boolean; };
+  customers: { view: boolean; add?: boolean; edit: boolean; delete?: boolean; };
+  reports: { view: boolean; };
+  services: { view: boolean; add: boolean; edit: boolean; delete: boolean; };
+  documents: { view: boolean; add: boolean; edit: boolean; delete: boolean; print: boolean; };
+  staff: { view: boolean; add: boolean; edit: boolean; delete?: boolean; };
+  settings: { view: boolean; edit: boolean; };
 }
 
 export interface UserProfile {
@@ -279,6 +279,14 @@ export interface UserProfile {
   roleId?: string; // Links to Role (overrides 'role')
   workStatus?: 'working' | 'probation' | 'resigned' | 'on_leave';
   notes?: string;
+  
+  // Advanced HR
+  bankName?: string;
+  bankAccount?: string;
+  bankAccountName?: string;
+  attachments?: string[]; // URLs cho CCCD, hợp đồng...
+  managerId?: string; // Quản lý trực tiếp
+  baseSalary?: number; // Lương cơ bản
   
   role: 'admin' | 'staff'; // Legacy/Fallback
   shopName: string;
@@ -349,6 +357,9 @@ export interface ActivityLog {
   action: string;
   details: string;
   module: string;
+  severity?: 'info' | 'warning' | 'danger';
+  oldData?: any;
+  newData?: any;
   createdAt?: any;
 }
 
@@ -846,3 +857,138 @@ export interface HealthEvaluation {
   updatedAt?: any;
 }
 
+// HR MODULE TYPES
+// === HR MODULE (PHASE 2) ===
+export interface HrKpiTarget {
+  id?: string;
+  userId: string;
+  month: string;
+  roleType: string;
+  targetRevenue: number;
+  targetCustomers: number;
+  targetOrders: number;
+  targetTreatments: number;
+  targetLeads: number;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface HrKpiRecord {
+  id?: string;
+  userId: string;
+  month: string;
+  actualRevenue: number;
+  actualCustomers: number;
+  actualOrders: number;
+  actualTreatments: number;
+  actualLeads: number;
+  bonusAmount: number;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface HrLeaveRequest {
+  id?: string;
+  userId: string;
+  startDate: string;
+  endDate: string;
+  leaveType: 'sick' | 'annual' | 'unpaid' | 'personal';
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  createdAt?: any;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface HrCommissionRule {
+  id?: string;
+  roleType: string; // 'staff', 'technician', etc.
+  commissionType: 'product' | 'service' | 'treatment' | 'referral';
+  percent: number;
+  fixedAmount?: number;
+  isActive: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface HrEvaluation {
+  id?: string;
+  userId: string;
+  type: 'reward' | 'penalty' | 'evaluation';
+  date: string; // YYYY-MM-DD
+  amount: number;
+  score?: number;
+  notes: string;
+  reportedBy?: string;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+// === REPORT MODELS ===
+export interface HrShift {
+  id?: string;
+  name: string; // e.g. 'Ca sáng', 'Ca chiều', 'Cả ngày'
+  startTime: string; // '08:00'
+  endTime: string; // '17:00'
+  description?: string;
+  isActive: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface HrShiftRegistration {
+  id?: string;
+  userId: string;
+  userName?: string;
+  shiftId: string;
+  shiftName?: string;
+  date: string; // YYYY-MM-DD
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface HrAttendance {
+  id?: string;
+  userId: string;
+  userName?: string;
+  shiftId?: string;
+  shiftName?: string;
+  date: string; // YYYY-MM-DD
+  checkInTime?: any;
+  checkOutTime?: any;
+  status: 'on_time' | 'late' | 'early_leave' | 'absent' | 'leave';
+  notes?: string;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface HrCommissionRule {
+  id?: string;
+  role?: string;
+  userId?: string;
+  userName?: string;
+  serviceId?: string;
+  serviceName?: string;
+  commissionType: 'percentage' | 'fixed';
+  commissionValue: number;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface HrPayrollSlip {
+  id?: string;
+  userId: string;
+  userName?: string;
+  month: number;
+  year: number;
+  baseSalary: number;
+  totalCommission: number;
+  bonus: number;
+  deductions: number;
+  netSalary: number;
+  status: 'draft' | 'finalized' | 'paid';
+  createdAt?: any;
+  updatedAt?: any;
+}
