@@ -428,7 +428,7 @@ export function Login() {
         <div className="flex-1 flex flex-col pt-10 px-8 xl:pt-14 xl:px-12 relative bg-white z-10">
           <div className="flex items-center gap-4 mb-8">
             <div className="w-[60px] h-[60px] rounded-full bg-white shadow-sm flex items-center justify-center border border-slate-100 overflow-hidden p-0.5">
-               <img src="/logo.png" alt="AM Agency Logo" className="w-full h-full rounded-full object-cover" />
+               <img src={`${import.meta.env.BASE_URL}logo.png`} alt="AM Agency Logo" className="w-full h-full rounded-full object-cover" />
             </div>
             <span className="text-[28px] font-bold text-[#1e293b] tracking-tight">AM Agency</span>
           </div>

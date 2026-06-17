@@ -219,7 +219,7 @@ export default function App() {
           style={{ filter: 'drop-shadow(0 0 32px rgba(251,146,60,0.4)) drop-shadow(0 0 64px rgba(59,130,246,0.2))' }}
         >
           <img
-            src="/logo.png"
+            src={`${import.meta.env.BASE_URL}logo.png`}
             alt="AM Agency Logo"
             style={{ width: 140, height: 140, objectFit: 'contain', borderRadius: '50%' }}
           />
